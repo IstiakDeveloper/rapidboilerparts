@@ -24,6 +24,9 @@ use Inertia\Inertia;
 
 // Home Route
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+// Individual product page
+Route::get('/products/{product:slug}', [ProductController::class, 'show'])->name('products.show');
 
 // Product Routes
 Route::prefix('products')->name('products.')->group(function () {
@@ -135,5 +138,4 @@ Route::get('/dashboard', function () {
     return redirect()->route('account.dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
-require __DIR__.'/auth.php';
-
+require __DIR__ . '/auth.php';
