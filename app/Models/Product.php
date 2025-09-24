@@ -165,4 +165,35 @@ class Product extends Model
                 ->orWhere('description', 'like', "%{$search}%");
         });
     }
+
+
+    public function services(): BelongsToMany
+    {
+        return $this->belongsToMany(ProductService::class, 'product_service_assignments')
+            ->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions'])
+            ->withTimestamps();
+    }
+
+    public function availableServices()
+    {
+        return $this->services()->active()->ordered();
+    }
+
+    public function mandatoryServices()
+    {
+        return $this->services()->active()->where(function ($query) {
+            $query->where('product_services.is_optional', false)
+                ->orWhere('product_service_assignments.is_mandatory', true);
+        });
+    }
+
+    public function getServicePrice($serviceId): float
+    {
+        $service = $this->services()->where('product_services.id', $serviceId)->first();
+        if (!$service) {
+            return 0;
+        }
+
+        return $service->getFinalPrice($this->id);
+    }
 }

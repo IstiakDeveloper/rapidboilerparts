@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Search, Filter, X, ChevronDown, Star, Grid, List, SortAsc, ShoppingCart, Heart, Eye } from 'lucide-react';
-import AppLayout from '@/Layouts/AppLayout';
+import AppLayout from '@/layouts/AppLayout';
 
 interface Product {
     id: number;

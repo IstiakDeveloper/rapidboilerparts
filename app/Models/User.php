@@ -94,4 +94,46 @@ class User extends Authenticatable
     {
         return $query->whereIn('user_type', ['admin', 'manager']);
     }
+
+
+
+    /**
+     * Check if user is admin
+     */
+    public function isAdmin(): bool
+    {
+        return $this->user_type === 'admin';
+    }
+
+    /**
+     * Check if user is manager
+     */
+    public function isManager(): bool
+    {
+        return $this->user_type === 'manager';
+    }
+
+    /**
+     * Check if user has admin privileges (admin or manager)
+     */
+    public function hasAdminPrivileges(): bool
+    {
+        return in_array($this->user_type, ['admin', 'manager']);
+    }
+
+    /**
+     * Check if user is customer
+     */
+    public function isCustomer(): bool
+    {
+        return $this->user_type === 'customer';
+    }
+
+    /**
+     * Check if user is active
+     */
+    public function isActive(): bool
+    {
+        return $this->is_active;
+    }
 }

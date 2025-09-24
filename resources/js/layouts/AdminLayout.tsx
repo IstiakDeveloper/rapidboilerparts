@@ -1,0 +1,365 @@
+import React, { useState, useEffect } from 'react';
+import { Link, usePage, router } from '@inertiajs/react';
+import {
+    LayoutDashboard,
+    Package,
+    Tag,
+    Lightbulb,
+    ShoppingBag,
+    Users,
+    Settings,
+    Ticket,
+    Star,
+    MessageSquare,
+    Menu,
+    X,
+    User,
+    LogOut,
+    ChevronLeft,
+    ChevronRight,
+    CheckCircle,
+    XCircle
+} from 'lucide-react';
+
+interface AdminLayoutProps {
+    children: React.ReactNode;
+}
+
+interface User {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    user_type: string;
+}
+
+interface PageProps {
+    auth: {
+        user: User;
+    };
+    flash?: {
+        success?: string;
+        error?: string;
+    };
+}
+
+const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
+    const { auth, flash } = usePage<PageProps>().props;
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [flashVisible, setFlashVisible] = useState(true);
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [currentPath, setCurrentPath] = useState('');
+
+    useEffect(() => {
+        setCurrentPath(window.location.pathname);
+    }, []);
+
+    useEffect(() => {
+        if (flash?.success || flash?.error) {
+            setFlashVisible(true);
+            const timer = setTimeout(() => {
+                setFlashVisible(false);
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [flash]);
+
+    const navigation = [
+        {
+            name: 'Dashboard',
+            href: '/admin/dashboard',
+            icon: LayoutDashboard,
+        },
+        {
+            name: 'Products',
+            href: '/admin/products',
+            icon: Package,
+        },
+        {
+            name: 'Categories',
+            href: '/admin/categories',
+            icon: Tag,
+        },
+        {
+            name: 'Brands',
+            href: '/admin/brands',
+            icon: Lightbulb,
+        },
+        {
+            name: 'Orders',
+            href: '/admin/orders',
+            icon: ShoppingBag,
+        },
+        {
+            name: 'Users',
+            href: '/admin/users',
+            icon: Users,
+        },
+        {
+            name: 'Services',
+            href: '/admin/product-services',
+            icon: Settings,
+        },
+        {
+            name: 'Coupons',
+            href: '/admin/coupons',
+            icon: Ticket,
+        },
+        {
+            name: 'Reviews',
+            href: '/admin/product-reviews',
+            icon: Star,
+        },
+        {
+            name: 'Inquiries',
+            href: '/admin/contact-inquiries',
+            icon: MessageSquare,
+        },
+        {
+            name: 'Settings',
+            href: '/admin/settings',
+            icon: Settings,
+        },
+    ];
+
+    const handleLogout = () => {
+        router.post('/logout');
+    };
+
+    const isActive = (href: string) => {
+        return currentPath === href || currentPath.startsWith(href + '/');
+    };
+
+    return (
+        <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-hidden">
+            {/* Mobile sidebar overlay */}
+            {sidebarOpen && (
+                <div
+                    className="fixed inset-0 z-50 lg:hidden"
+                    onClick={() => setSidebarOpen(false)}
+                >
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" />
+                </div>
+            )}
+
+            {/* Sidebar - Fixed positioning */}
+            <div
+                className={`fixed inset-y-0 left-0 z-40 ${isCollapsed ? 'w-20' : 'w-72'}
+                    bg-white/95 backdrop-blur-xl shadow-xl border-r border-slate-200/50
+                    transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                    transition-all duration-300 ease-in-out lg:translate-x-0
+                    flex flex-col h-full`}
+            >
+                {/* Logo Section - Fixed height */}
+                <div className={`flex items-center ${isCollapsed ? 'justify-center px-4' : 'justify-between px-6'} h-20
+                    bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 relative overflow-hidden flex-shrink-0`}>
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-purple-400/20 animate-pulse" />
+                    {!isCollapsed && (
+                        <h1 className="text-xl font-bold text-white relative z-10 tracking-wide">
+                            Boiler Parts Admin
+                        </h1>
+                    )}
+                    {isCollapsed && (
+                        <div className="text-2xl font-bold text-white relative z-10">BP</div>
+                    )}
+
+                    {/* Collapse Toggle - Desktop Only */}
+                    <button
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg
+                            bg-white/20 hover:bg-white/30 text-white transition-all duration-200
+                            hover:scale-110 relative z-10"
+                    >
+                        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                    </button>
+
+                    {/* Mobile Close Button */}
+                    <button
+                        onClick={() => setSidebarOpen(false)}
+                        className="lg:hidden text-white hover:bg-white/20 p-1 rounded relative z-10"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                </div>
+
+                {/* Navigation - Scrollable middle section */}
+                <div className="flex-1 overflow-y-auto min-h-0">
+                    <nav className="px-4 pt-6 pb-4"
+                         style={{
+                             scrollbarWidth: 'thin',
+                             scrollbarColor: '#cbd5e1 #f1f5f9'
+                         }}>
+                        <style jsx>{`
+                            nav::-webkit-scrollbar {
+                                width: 4px;
+                            }
+                            nav::-webkit-scrollbar-track {
+                                background: #f1f5f9;
+                                border-radius: 2px;
+                            }
+                            nav::-webkit-scrollbar-thumb {
+                                background: #cbd5e1;
+                                border-radius: 2px;
+                            }
+                            nav::-webkit-scrollbar-thumb:hover {
+                                background: #94a3b8;
+                            }
+                        `}</style>
+                        <div className="space-y-1">
+                            {navigation.map((item) => {
+                                const Icon = item.icon;
+                                const active = isActive(item.href);
+                                return (
+                                    <Link
+                                        key={item.name}
+                                        href={item.href}
+                                        className={`group flex items-center px-3 py-2.5 text-xs font-medium rounded-lg
+                                            transition-all duration-200 hover:scale-[1.02] relative overflow-hidden
+                                            ${active
+                                                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20'
+                                                : 'text-slate-600 hover:bg-gradient-to-r hover:from-slate-100 hover:to-blue-50 hover:text-blue-700'
+                                            }`}
+                                    >
+                                        {active && (
+                                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-indigo-400/20 animate-pulse" />
+                                        )}
+                                        <Icon className={`${isCollapsed ? 'w-5 h-5' : 'w-4 h-4 mr-3'} relative z-10
+                                            ${active ? 'text-white' : 'text-slate-500 group-hover:text-blue-600'}
+                                            transition-colors duration-200`} />
+                                        {!isCollapsed && (
+                                            <span className="relative z-10 font-medium">{item.name}</span>
+                                        )}
+
+                                        {active && !isCollapsed && (
+                                            <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                                        )}
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </nav>
+                </div>
+
+                {/* User Profile Section - Fixed at bottom */}
+                <div className={`flex-shrink-0 p-4 bg-gradient-to-r from-slate-100 to-blue-100
+                    rounded-xl border border-slate-200/50 mx-4 mb-4 ${isCollapsed ? 'px-2' : ''}`}>
+                    <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'space-x-3'}`}>
+                        <div className="flex-shrink-0">
+                            <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-600
+                                rounded-full flex items-center justify-center shadow-md">
+                                <User className="w-4 h-4 text-white" />
+                            </div>
+                        </div>
+                        {!isCollapsed && (
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-slate-900 truncate">
+                                    {auth.user.first_name} {auth.user.last_name}
+                                </p>
+                                <p className="text-[10px] text-slate-600 truncate">{auth.user.email}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Main content area - Properly offset from sidebar */}
+            <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out
+                ml-0 ${isCollapsed ? 'lg:ml-20' : 'lg:ml-72'}`}>
+                {/* Top header - Fixed */}
+                <header className="bg-white/80 backdrop-blur-xl shadow-sm border-b border-slate-200/50 sticky top-0 z-30 flex-shrink-0">
+                    <div className="flex items-center justify-between h-16 px-4 lg:px-6">
+                        <div className="flex items-center space-x-4">
+                            <button
+                                onClick={() => setSidebarOpen(!sidebarOpen)}
+                                className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100
+                                    hover:text-slate-900 transition-all duration-200 hover:scale-110"
+                            >
+                                <Menu className="w-6 h-6" />
+                            </button>
+
+                            <div className="hidden sm:block">
+                                <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600
+                                    bg-clip-text text-transparent">
+                                    Welcome back, {auth.user.first_name}! 👋
+                                </h2>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                            <div className="hidden md:flex items-center space-x-2 px-4 py-2 bg-gradient-to-r
+                                from-emerald-50 to-blue-50 rounded-full border border-emerald-200/50">
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                <span className="text-sm font-medium text-emerald-700">Online</span>
+                            </div>
+
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center space-x-2 px-4 py-2 rounded-lg
+                                    bg-gradient-to-r from-red-50 to-pink-50 text-red-600
+                                    hover:from-red-100 hover:to-pink-100 border border-red-200/50
+                                    transition-all duration-200 hover:scale-105 hover:shadow-md"
+                            >
+                                <LogOut className="w-4 h-4" />
+                                <span className="font-medium">Logout</span>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                {/* Flash messages */}
+                {flashVisible && flash?.success && (
+                    <div className="mx-4 lg:mx-6 mt-4 p-4 bg-gradient-to-r from-emerald-50 to-green-50
+                        border border-emerald-200/50 rounded-xl shadow-lg transform transition-all
+                        duration-500 ease-out animate-in slide-in-from-top-2 flex-shrink-0">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                                <CheckCircle className="h-6 w-6 text-emerald-500" />
+                            </div>
+                            <div className="ml-3 flex-1">
+                                <p className="text-sm font-semibold text-emerald-800">{flash.success}</p>
+                            </div>
+                            <button
+                                onClick={() => setFlashVisible(false)}
+                                className="ml-4 text-emerald-500 hover:text-emerald-700 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {flashVisible && flash?.error && (
+                    <div className="mx-4 lg:mx-6 mt-4 p-4 bg-gradient-to-r from-red-50 to-pink-50
+                        border border-red-200/50 rounded-xl shadow-lg transform transition-all
+                        duration-500 ease-out animate-in slide-in-from-top-2 flex-shrink-0">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0">
+                                <XCircle className="h-6 w-6 text-red-500" />
+                            </div>
+                            <div className="ml-3 flex-1">
+                                <p className="text-sm font-semibold text-red-800">{flash.error}</p>
+                            </div>
+                            <button
+                                onClick={() => setFlashVisible(false)}
+                                className="ml-4 text-red-500 hover:text-red-700 transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Main content area - Scrollable */}
+                <main className="flex-1 overflow-y-auto bg-transparent">
+                    <div className="container mx-auto px-4 lg:px-6 py-6 lg:py-8 max-w-full">
+                        <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200/50 p-6 lg:p-8">
+                            {children}
+                        </div>
+                    </div>
+                </main>
+            </div>
+        </div>
+    );
+};
+
+export default AdminLayout;

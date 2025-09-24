@@ -19,7 +19,30 @@ class Cart extends Model
 
     protected $casts = [
         'quantity' => 'integer',
+        'selected_services' => 'array',
     ];
+
+    public function getServicesTotalAttribute(): float
+    {
+        if (!$this->selected_services || !is_array($this->selected_services)) {
+            return 0;
+        }
+
+        $total = 0;
+        foreach ($this->selected_services as $serviceId) {
+            $total += $this->product->getServicePrice($serviceId);
+        }
+
+        return $total;
+    }
+
+    public function getTotalPriceAttribute()
+    {
+        $productTotal = $this->product->final_price * $this->quantity;
+        $servicesTotal = $this->services_total;
+
+        return $productTotal + $servicesTotal;
+    }
 
     // Relationships
     public function user(): BelongsTo
@@ -30,12 +53,6 @@ class Cart extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
-    }
-
-    // Accessors
-    public function getTotalPriceAttribute()
-    {
-        return $this->product->final_price * $this->quantity;
     }
 
     // Scopes

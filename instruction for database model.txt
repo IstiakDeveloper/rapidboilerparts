@@ -1,0 +1,1638 @@
+<?php
+
+// 1. Create Categories Migration
+// php artisan make:migration create_categories_table
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('categories', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->string('image')->nullable();
+            $table->integer('sort_order')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->unsignedBigInteger('parent_id')->nullable();
+            $table->timestamps();
+
+            $table->foreign('parent_id')->references('id')->on('categories')->onDelete('cascade');
+            $table->index(['is_active', 'sort_order']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('categories');
+    }
+};
+
+// 2. Create Brands Migration  
+// php artisan make:migration create_brands_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('brands', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->string('logo')->nullable();
+            $table->string('website')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->integer('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->index(['is_active', 'sort_order']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('brands');
+    }
+};
+
+// 3. Create Products Migration
+// php artisan make:migration create_products_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('short_description')->nullable();
+            $table->longText('description')->nullable();
+            $table->string('sku')->unique();
+            $table->string('manufacturer_part_number')->nullable();
+            $table->string('gc_number')->nullable(); // GC Number field
+            
+            // Pricing
+            $table->decimal('price', 10, 2);
+            $table->decimal('sale_price', 10, 2)->nullable();
+            $table->decimal('cost_price', 10, 2)->nullable();
+            
+            // Inventory
+            $table->integer('stock_quantity')->default(0);
+            $table->boolean('manage_stock')->default(true);
+            $table->boolean('in_stock')->default(true);
+            $table->integer('low_stock_threshold')->default(5);
+            
+            // SEO & Status
+            $table->string('meta_title')->nullable();
+            $table->text('meta_description')->nullable();
+            $table->enum('status', ['active', 'inactive', 'draft'])->default('active');
+            $table->boolean('is_featured')->default(false);
+            
+            // Relationships
+            $table->foreignId('brand_id')->constrained()->onDelete('cascade');
+            $table->foreignId('category_id')->constrained()->onDelete('cascade');
+            
+            // Physical properties
+            $table->decimal('weight', 8, 2)->nullable();
+            $table->decimal('length', 8, 2)->nullable();
+            $table->decimal('width', 8, 2)->nullable();
+            $table->decimal('height', 8, 2)->nullable();
+            
+            $table->timestamps();
+
+            $table->index(['status', 'is_featured']);
+            $table->index(['brand_id', 'category_id']);
+            $table->index('manufacturer_part_number');
+            $table->index('gc_number');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('products');
+    }
+};
+
+// 4. Create Product Images Migration
+// php artisan make:migration create_product_images_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_images', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->string('image_path');
+            $table->string('alt_text')->nullable();
+            $table->integer('sort_order')->default(0);
+            $table->boolean('is_primary')->default(false);
+            $table->timestamps();
+
+            $table->index(['product_id', 'sort_order']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_images');
+    }
+};
+
+// 5. Create Product Attributes Migration
+// php artisan make:migration create_product_attributes_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_attributes', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('slug');
+            $table->enum('type', ['text', 'number', 'select', 'multiselect', 'boolean']);
+            $table->boolean('is_required')->default(false);
+            $table->boolean('is_filterable')->default(false);
+            $table->integer('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->index('slug');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_attributes');
+    }
+};
+
+// 6. Create Product Attribute Values Migration
+// php artisan make:migration create_product_attribute_values_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_attribute_values', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_attribute_id')->constrained()->onDelete('cascade');
+            $table->text('value');
+            $table->timestamps();
+
+            $table->index(['product_id', 'product_attribute_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_attribute_values');
+    }
+};
+
+// 7. Create Compatible Models Migration (for boiler compatibility)
+// php artisan make:migration create_compatible_models_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('compatible_models', function (Blueprint $table) {
+            $table->id();
+            $table->string('brand_name'); // Worcester, Baxi, Ideal, etc.
+            $table->string('model_name');
+            $table->string('model_code')->nullable();
+            $table->year('year_from')->nullable();
+            $table->year('year_to')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->timestamps();
+
+            $table->index(['brand_name', 'model_name']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('compatible_models');
+    }
+};
+
+// 8. Create Product Compatible Models Pivot Table
+// php artisan make:migration create_product_compatible_models_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_compatible_models', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->foreignId('compatible_model_id')->constrained()->onDelete('cascade');
+            $table->timestamps();
+
+            $table->unique(['product_id', 'compatible_model_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_compatible_models');
+    }
+};
+
+// 9. Create Users Migration (Enhanced for e-commerce)
+// php artisan make:migration create_users_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+            $table->string('first_name');
+            $table->string('last_name');
+            $table->string('email')->unique();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password');
+            $table->string('phone')->nullable();
+            $table->date('date_of_birth')->nullable();
+            $table->enum('gender', ['male', 'female', 'other'])->nullable();
+            $table->enum('user_type', ['customer', 'admin', 'manager'])->default('customer');
+            $table->boolean('is_active')->default(true);
+            $table->timestamp('last_login_at')->nullable();
+            $table->rememberToken();
+            $table->timestamps();
+
+            $table->index(['user_type', 'is_active']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('users');
+    }
+};
+
+// 10. Create User Addresses Migration
+// php artisan make:migration create_user_addresses_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('user_addresses', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->enum('type', ['billing', 'shipping'])->default('shipping');
+            $table->string('first_name');
+            $table->string('last_name');
+            $table->string('company')->nullable();
+            $table->string('address_line_1');
+            $table->string('address_line_2')->nullable();
+            $table->string('city');
+            $table->string('state');
+            $table->string('postal_code');
+            $table->string('country', 2)->default('BD');
+            $table->string('phone')->nullable();
+            $table->boolean('is_default')->default(false);
+            $table->timestamps();
+
+            $table->index(['user_id', 'type']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('user_addresses');
+    }
+};
+
+// 11. Create Orders Migration
+// php artisan make:migration create_orders_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('orders', function (Blueprint $table) {
+            $table->id();
+            $table->string('order_number')->unique();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            
+            // Order Status
+            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])
+                  ->default('pending');
+            
+            // Amounts
+            $table->decimal('subtotal', 10, 2);
+            $table->decimal('tax_amount', 10, 2)->default(0);
+            $table->decimal('shipping_amount', 10, 2)->default(0);
+            $table->decimal('discount_amount', 10, 2)->default(0);
+            $table->decimal('total_amount', 10, 2);
+            
+            // Payment
+            $table->enum('payment_status', ['pending', 'paid', 'failed', 'refunded'])->default('pending');
+            $table->string('payment_method')->nullable();
+            $table->string('payment_transaction_id')->nullable();
+            
+            // Addresses
+            $table->json('billing_address');
+            $table->json('shipping_address');
+            
+            // Additional Info
+            $table->text('notes')->nullable();
+            $table->timestamp('shipped_at')->nullable();
+            $table->timestamp('delivered_at')->nullable();
+            
+            $table->timestamps();
+
+            $table->index(['user_id', 'status']);
+            $table->index('order_number');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('orders');
+    }
+};
+
+// 12. Create Order Items Migration
+// php artisan make:migration create_order_items_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('order_items', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('order_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->string('product_name'); // Store name at time of order
+            $table->string('product_sku'); // Store SKU at time of order
+            $table->integer('quantity');
+            $table->decimal('unit_price', 10, 2);
+            $table->decimal('total_price', 10, 2);
+            $table->timestamps();
+
+            $table->index('order_id');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('order_items');
+    }
+};
+
+// 13. Create Cart Migration
+// php artisan make:migration create_carts_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('carts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->nullable()->constrained()->onDelete('cascade');
+            $table->string('session_id')->nullable(); // For guest users
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->integer('quantity');
+            $table->timestamps();
+
+            $table->index(['user_id', 'product_id']);
+            $table->index(['session_id', 'product_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('carts');
+    }
+};
+
+// 14. Create Wishlists Migration
+// php artisan make:migration create_wishlists_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('wishlists', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->timestamps();
+
+            $table->unique(['user_id', 'product_id']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('wishlists');
+    }
+};
+
+// 15. Create Product Reviews Migration
+// php artisan make:migration create_product_reviews_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('product_reviews', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->integer('rating')->unsigned(); // 1-5
+            $table->string('title')->nullable();
+            $table->text('comment')->nullable();
+            $table->boolean('is_approved')->default(false);
+            $table->timestamps();
+
+            $table->unique(['product_id', 'user_id']);
+            $table->index(['product_id', 'is_approved']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('product_reviews');
+    }
+};
+
+// 16. Create Coupons Migration
+// php artisan make:migration create_coupons_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('coupons', function (Blueprint $table) {
+            $table->id();
+            $table->string('code')->unique();
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->enum('type', ['percentage', 'fixed_amount']);
+            $table->decimal('value', 10, 2);
+            $table->decimal('minimum_amount', 10, 2)->nullable();
+            $table->decimal('maximum_discount', 10, 2)->nullable();
+            $table->integer('usage_limit')->nullable();
+            $table->integer('used_count')->default(0);
+            $table->boolean('is_active')->default(true);
+            $table->datetime('starts_at')->nullable();
+            $table->datetime('expires_at')->nullable();
+            $table->timestamps();
+
+            $table->index(['code', 'is_active']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('coupons');
+    }
+};
+
+// 17. Create Settings Migration
+// php artisan make:migration create_settings_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('settings', function (Blueprint $table) {
+            $table->id();
+            $table->string('key')->unique();
+            $table->text('value');
+            $table->string('group')->default('general');
+            $table->timestamps();
+
+            $table->index(['group', 'key']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('settings');
+    }
+};
+
+// 18. Create Contact Inquiries Migration
+// php artisan make:migration create_contact_inquiries_table
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('contact_inquiries', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->string('email');
+            $table->string('phone')->nullable();
+            $table->string('subject');
+            $table->text('message');
+            $table->enum('status', ['new', 'in_progress', 'resolved', 'closed'])->default('new');
+            $table->text('admin_notes')->nullable();
+            $table->timestamps();
+
+            $table->index('status');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('contact_inquiries');
+    }
+};
+
+
+
+<?php
+
+// 1. Category Model
+// app/Models/Category.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Category extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'description',
+        'image',
+        'sort_order',
+        'is_active',
+        'parent_id',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'sort_order' => 'integer',
+    ];
+
+    // Relationships
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(Category::class, 'parent_id');
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeParent($query)
+    {
+        return $query->whereNull('parent_id');
+    }
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order', 'asc');
+    }
+}
+
+// 2. Brand Model
+// app/Models/Brand.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Brand extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'description',
+        'logo',
+        'website',
+        'is_active',
+        'sort_order',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'sort_order' => 'integer',
+    ];
+
+    // Relationships
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order', 'asc');
+    }
+}
+
+// 3. Product Model
+// app/Models/Product.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+
+class Product extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'short_description',
+        'description',
+        'sku',
+        'manufacturer_part_number',
+        'gc_number',
+        'price',
+        'sale_price',
+        'cost_price',
+        'stock_quantity',
+        'manage_stock',
+        'in_stock',
+        'low_stock_threshold',
+        'meta_title',
+        'meta_description',
+        'status',
+        'is_featured',
+        'brand_id',
+        'category_id',
+        'weight',
+        'length',
+        'width',
+        'height',
+    ];
+
+    protected $casts = [
+        'price' => 'decimal:2',
+        'sale_price' => 'decimal:2',
+        'cost_price' => 'decimal:2',
+        'stock_quantity' => 'integer',
+        'manage_stock' => 'boolean',
+        'in_stock' => 'boolean',
+        'low_stock_threshold' => 'integer',
+        'is_featured' => 'boolean',
+        'weight' => 'decimal:2',
+        'length' => 'decimal:2',
+        'width' => 'decimal:2',
+        'height' => 'decimal:2',
+    ];
+
+    // Relationships
+    public function brand(): BelongsTo
+    {
+        return $this->belongsTo(Brand::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
+    }
+
+    public function images(): HasMany
+    {
+        return $this->hasMany(ProductImage::class);
+    }
+
+    public function attributeValues(): HasMany
+    {
+        return $this->hasMany(ProductAttributeValue::class);
+    }
+
+    public function compatibleModels(): BelongsToMany
+    {
+        return $this->belongsToMany(CompatibleModel::class, 'product_compatible_models');
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(Cart::class);
+    }
+
+    public function wishlistItems(): HasMany
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    // Accessors
+    public function getFinalPriceAttribute()
+    {
+        return $this->sale_price ?? $this->price;
+    }
+
+    public function getDiscountPercentageAttribute()
+    {
+        if ($this->sale_price && $this->price > $this->sale_price) {
+            return round((($this->price - $this->sale_price) / $this->price) * 100, 2);
+        }
+        return 0;
+    }
+
+    public function getPrimaryImageAttribute()
+    {
+        return $this->images()->where('is_primary', true)->first();
+    }
+
+    public function getAverageRatingAttribute()
+    {
+        return $this->reviews()->avg('rating') ?? 0;
+    }
+
+    public function getTotalReviewsAttribute()
+    {
+        return $this->reviews()->count();
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeFeatured($query)
+    {
+        return $query->where('is_featured', true);
+    }
+
+    public function scopeInStock($query)
+    {
+        return $query->where('in_stock', true);
+    }
+
+    public function scopeByBrand($query, $brandId)
+    {
+        return $query->where('brand_id', $brandId);
+    }
+
+    public function scopeByCategory($query, $categoryId)
+    {
+        return $query->where('category_id', $categoryId);
+    }
+
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function ($q) use ($search) {
+            $q->where('name', 'like', "%{$search}%")
+              ->orWhere('sku', 'like', "%{$search}%")
+              ->orWhere('manufacturer_part_number', 'like', "%{$search}%")
+              ->orWhere('gc_number', 'like', "%{$search}%")
+              ->orWhere('description', 'like', "%{$search}%");
+        });
+    }
+}
+
+// 4. Product Image Model
+// app/Models/ProductImage.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class ProductImage extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'product_id',
+        'image_path',
+        'alt_text',
+        'sort_order',
+        'is_primary',
+    ];
+
+    protected $casts = [
+        'sort_order' => 'integer',
+        'is_primary' => 'boolean',
+    ];
+
+    // Relationships
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    // Scopes
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order', 'asc');
+    }
+
+    public function scopePrimary($query)
+    {
+        return $query->where('is_primary', true);
+    }
+}
+
+// 5. Product Attribute Model
+// app/Models/ProductAttribute.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class ProductAttribute extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'slug',
+        'type',
+        'is_required',
+        'is_filterable',
+        'sort_order',
+    ];
+
+    protected $casts = [
+        'is_required' => 'boolean',
+        'is_filterable' => 'boolean',
+        'sort_order' => 'integer',
+    ];
+
+    // Relationships
+    public function values(): HasMany
+    {
+        return $this->hasMany(ProductAttributeValue::class);
+    }
+
+    // Scopes
+    public function scopeFilterable($query)
+    {
+        return $query->where('is_filterable', true);
+    }
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order', 'asc');
+    }
+}
+
+// 6. Product Attribute Value Model
+// app/Models/ProductAttributeValue.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class ProductAttributeValue extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'product_id',
+        'product_attribute_id',
+        'value',
+    ];
+
+    // Relationships
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function attribute(): BelongsTo
+    {
+        return $this->belongsTo(ProductAttribute::class, 'product_attribute_id');
+    }
+}
+
+// 7. Compatible Model
+// app/Models/CompatibleModel.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+
+class CompatibleModel extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'brand_name',
+        'model_name',
+        'model_code',
+        'year_from',
+        'year_to',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'year_from' => 'integer',
+        'year_to' => 'integer',
+        'is_active' => 'boolean',
+    ];
+
+    // Relationships
+    public function products(): BelongsToMany
+    {
+        return $this->belongsToMany(Product::class, 'product_compatible_models');
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeByBrand($query, $brand)
+    {
+        return $query->where('brand_name', $brand);
+    }
+}
+
+// 8. Enhanced User Model
+// app/Models/User.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class User extends Authenticatable
+{
+    use HasFactory, Notifiable;
+
+    protected $fillable = [
+        'first_name',
+        'last_name',
+        'email',
+        'password',
+        'phone',
+        'date_of_birth',
+        'gender',
+        'user_type',
+        'is_active',
+        'last_login_at',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'date_of_birth' => 'date',
+        'is_active' => 'boolean',
+        'last_login_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+
+    // Relationships
+    public function addresses(): HasMany
+    {
+        return $this->hasMany(UserAddress::class);
+    }
+
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(Cart::class);
+    }
+
+    public function wishlistItems(): HasMany
+    {
+        return $this->hasMany(Wishlist::class);
+    }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
+    // Accessors
+    public function getFullNameAttribute(): string
+    {
+        return $this->first_name . ' ' . $this->last_name;
+    }
+
+    public function getDefaultBillingAddressAttribute()
+    {
+        return $this->addresses()->where('type', 'billing')->where('is_default', true)->first();
+    }
+
+    public function getDefaultShippingAddressAttribute()
+    {
+        return $this->addresses()->where('type', 'shipping')->where('is_default', true)->first();
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeCustomers($query)
+    {
+        return $query->where('user_type', 'customer');
+    }
+
+    public function scopeAdmins($query)
+    {
+        return $query->whereIn('user_type', ['admin', 'manager']);
+    }
+}
+
+// 9. User Address Model
+// app/Models/UserAddress.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class UserAddress extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'type',
+        'first_name',
+        'last_name',
+        'company',
+        'address_line_1',
+        'address_line_2',
+        'city',
+        'state',
+        'postal_code',
+        'country',
+        'phone',
+        'is_default',
+    ];
+
+    protected $casts = [
+        'is_default' => 'boolean',
+    ];
+
+    // Relationships
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    // Accessors
+    public function getFullNameAttribute(): string
+    {
+        return $this->first_name . ' ' . $this->last_name;
+    }
+
+    public function getFormattedAddressAttribute(): string
+    {
+        $address = $this->address_line_1;
+        if ($this->address_line_2) {
+            $address .= ', ' . $this->address_line_2;
+        }
+        $address .= ', ' . $this->city . ', ' . $this->state . ' ' . $this->postal_code;
+        return $address;
+    }
+
+    // Scopes
+    public function scopeBilling($query)
+    {
+        return $query->where('type', 'billing');
+    }
+
+    public function scopeShipping($query)
+    {
+        return $query->where('type', 'shipping');
+    }
+
+    public function scopeDefault($query)
+    {
+        return $query->where('is_default', true);
+    }
+}
+
+// 10. Order Model
+// app/Models/Order.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Order extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'order_number',
+        'user_id',
+        'status',
+        'subtotal',
+        'tax_amount',
+        'shipping_amount',
+        'discount_amount',
+        'total_amount',
+        'payment_status',
+        'payment_method',
+        'payment_transaction_id',
+        'billing_address',
+        'shipping_address',
+        'notes',
+        'shipped_at',
+        'delivered_at',
+    ];
+
+    protected $casts = [
+        'subtotal' => 'decimal:2',
+        'tax_amount' => 'decimal:2',
+        'shipping_amount' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
+        'total_amount' => 'decimal:2',
+        'billing_address' => 'array',
+        'shipping_address' => 'array',
+        'shipped_at' => 'datetime',
+        'delivered_at' => 'datetime',
+    ];
+
+    // Relationships
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    // Accessors
+    public function getTotalItemsAttribute(): int
+    {
+        return $this->items->sum('quantity');
+    }
+
+    public function getFormattedOrderNumberAttribute(): string
+    {
+        return '#' . $this->order_number;
+    }
+
+    // Scopes
+    public function scopeByStatus($query, $status)
+    {
+        return $query->where('status', $status);
+    }
+
+    public function scopeByPaymentStatus($query, $status)
+    {
+        return $query->where('payment_status', $status);
+    }
+
+    public function scopeRecent($query)
+    {
+        return $query->orderBy('created_at', 'desc');
+    }
+
+    // Boot method to generate order number
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($order) {
+            $order->order_number = 'ORD-' . strtoupper(uniqid());
+        });
+    }
+}
+
+// 11. Order Item Model
+// app/Models/OrderItem.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class OrderItem extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'order_id',
+        'product_id',
+        'product_name',
+        'product_sku',
+        'quantity',
+        'unit_price',
+        'total_price',
+    ];
+
+    protected $casts = [
+        'quantity' => 'integer',
+        'unit_price' => 'decimal:2',
+        'total_price' => 'decimal:2',
+    ];
+
+    // Relationships
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+// 12. Cart Model
+// app/Models/Cart.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Cart extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'session_id',
+        'product_id',
+        'quantity',
+    ];
+
+    protected $casts = [
+        'quantity' => 'integer',
+    ];
+
+    // Relationships
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    // Accessors
+    public function getTotalPriceAttribute()
+    {
+        return $this->product->final_price * $this->quantity;
+    }
+
+    // Scopes
+    public function scopeByUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    public function scopeBySession($query, $sessionId)
+    {
+        return $query->where('session_id', $sessionId);
+    }
+}
+
+// 13. Wishlist Model
+// app/Models/Wishlist.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Wishlist extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'user_id',
+        'product_id',
+    ];
+
+    // Relationships
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+}
+
+// 14. Product Review Model
+// app/Models/ProductReview.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class ProductReview extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'product_id',
+        'user_id',
+        'rating',
+        'title',
+        'comment',
+        'is_approved',
+    ];
+
+    protected $casts = [
+        'rating' => 'integer',
+        'is_approved' => 'boolean',
+    ];
+
+    // Relationships
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    // Scopes
+    public function scopeApproved($query)
+    {
+        return $query->where('is_approved', true);
+    }
+
+    public function scopeByRating($query, $rating)
+    {
+        return $query->where('rating', $rating);
+    }
+}
+
+// 15. Coupon Model
+// app/Models/Coupon.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
+
+class Coupon extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'code',
+        'name',
+        'description',
+        'type',
+        'value',
+        'minimum_amount',
+        'maximum_discount',
+        'usage_limit',
+        'used_count',
+        'is_active',
+        'starts_at',
+        'expires_at',
+    ];
+
+    protected $casts = [
+        'value' => 'decimal:2',
+        'minimum_amount' => 'decimal:2',
+        'maximum_discount' => 'decimal:2',
+        'usage_limit' => 'integer',
+        'used_count' => 'integer',
+        'is_active' => 'boolean',
+        'starts_at' => 'datetime',
+        'expires_at' => 'datetime',
+    ];
+
+    // Methods
+    public function isValid($cartTotal = 0): bool
+    {
+        if (!$this->is_active) {
+            return false;
+        }
+
+        if ($this->starts_at && Carbon::now()->lt($this->starts_at)) {
+            return false;
+        }
+
+        if ($this->expires_at && Carbon::now()->gt($this->expires_at)) {
+            return false;
+        }
+
+        if ($this->usage_limit && $this->used_count >= $this->usage_limit) {
+            return false;
+        }
+
+        if ($this->minimum_amount && $cartTotal < $this->minimum_amount) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function calculateDiscount($cartTotal): float
+    {
+        if (!$this->isValid($cartTotal)) {
+            return 0;
+        }
+
+        if ($this->type === 'percentage') {
+            $discount = ($cartTotal * $this->value) / 100;
+            if ($this->maximum_discount && $discount > $this->maximum_discount) {
+                $discount = $this->maximum_discount;
+            }
+        } else {
+            $discount = min($this->value, $cartTotal);
+        }
+
+        return round($discount, 2);
+    }
+
+    // Scopes
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeValid($query)
+    {
+        return $query->where('is_active', true)
+                    ->where(function ($q) {
+                        $q->whereNull('starts_at')
+                          ->orWhere('starts_at', '<=', Carbon::now());
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('expires_at')
+                          ->orWhere('expires_at', '>=', Carbon::now());
+                    })
+                    ->where(function ($q) {
+                        $q->whereNull('usage_limit')
+                          ->orWhereRaw('used_count < usage_limit');
+                    });
+    }
+}
+
+// 16. Setting Model
+// app/Models/Setting.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Setting extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'key',
+        'value',
+        'group',
+    ];
+
+    // Static methods for easy setting management
+    public static function get($key, $default = null)
+    {
+        $setting = static::where('key', $key)->first();
+        return $setting ? $setting->value : $default;
+    }
+
+    public static function set($key, $value, $group = 'general')
+    {
+        return static::updateOrCreate(
+            ['key' => $key],
+            ['value' => $value, 'group' => $group]
+        );
+    }
+
+    public static function getByGroup($group)
+    {
+        return static::where('group', $group)->pluck('value', 'key');
+    }
+
+    // Scopes
+    public function scopeByGroup($query, $group)
+    {
+        return $query->where('group', $group);
+    }
+}
+
+// 17. Contact Inquiry Model
+// app/Models/ContactInquiry.php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ContactInquiry extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name',
+        'email',
+        'phone',
+        'subject',
+        'message',
+        'status',
+        'admin_notes',
+    ];
+
+    // Scopes
+    public function scopeByStatus($query, $status)
+    {
+        return $query->where('status', $status);
+    }
+
+    public function scopeNew($query)
+    {
+        return $query->where('status', 'new');
+    }
+
+    public function scopeRecent($query)
+    {
+        return $query->orderBy('created_at', 'desc');
+    }
+}
+
+Egula bebohar kore ami ekti boiler parts system banacchi UK er jonno 
+Use kori Laravel 12 with inertia 2 and react 19 tsx with tailwind 
+
