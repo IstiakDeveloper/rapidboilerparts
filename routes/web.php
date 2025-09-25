@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\{
 };
 
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -39,6 +40,21 @@ use Inertia\Inertia;
 |--------------------------------------------------------------------------
 */
 
+
+Route::get('/storage-link', function () {
+    try {
+        Artisan::call('storage:link');
+        return "The [public/storage] directory has been linked.";
+    } catch (\Exception $e) {
+        return "There was an error: " . $e->getMessage();
+    }
+})->name('storage.link');
+
+
+Route::get('/migrate', function () {
+    Artisan::call('migrate');
+    return 'Migration completed successfully!';
+});
 // Home Route
 Route::get('/', [HomeController::class, 'index'])->name('home');
 

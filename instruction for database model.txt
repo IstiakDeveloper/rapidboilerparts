@@ -1635,4 +1635,46 @@ class ContactInquiry extends Model
 
 Egula bebohar kore ami ekti boiler parts system banacchi UK er jonno 
 Use kori Laravel 12 with inertia 2 and react 19 tsx with tailwind 
+Er pore ami kichu migration add korci jat produc service dewa jai
+Delivary ba setup fee ba onno kicu add korar jonno
+Schema::create('product_services', function (Blueprint $table) {
+            $table->id();
+            $table->string('name'); // Setup Service, Delivery Service, Installation Service
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->enum('type', ['setup', 'delivery', 'installation', 'maintenance', 'other']);
+            $table->decimal('price', 10, 2)->default(0);
+            $table->boolean('is_optional')->default(true); // true = optional, false = mandatory
+            $table->boolean('is_free')->default(false); // free service
+            $table->json('conditions')->nullable(); // conditions for free service
+            $table->boolean('is_active')->default(true);
+            $table->integer('sort_order')->default(0);
+            $table->timestamps();
+
+            $table->index(['type', 'is_active']);
+        });
+
+Schema::create('product_service_assignments', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->onDelete('cascade');
+            $table->foreignId('product_service_id')->constrained()->onDelete('cascade');
+            $table->decimal('custom_price', 10, 2)->nullable(); // override default price for specific product
+            $table->boolean('is_mandatory')->default(false); // mandatory for this specific product
+            $table->boolean('is_free')->default(false); // free for this specific product
+            $table->json('conditions')->nullable(); // specific conditions for this product
+            $table->timestamps();
+
+            $table->unique(['product_id', 'product_service_id']);
+        });
+
+Schema::table('order_items', function (Blueprint $table) {
+            $table->json('selected_services')->nullable()->after('total_price'); // services selected with this product
+            $table->decimal('services_total', 10, 2)->default(0)->after('selected_services');
+        });
+
+Schema::table('carts', function (Blueprint $table) {
+            $table->json('selected_services')->nullable()->after('quantity'); // selected services for cart item
+        });
+
+
 
