@@ -45,7 +45,7 @@ export default function Create({ parent_categories = [] }: Props) {
     return (
         <AdminLayout>
             <Head title="Create Category" />
-            
+
             <div className="space-y-8">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -53,8 +53,8 @@ export default function Create({ parent_categories = [] }: Props) {
                         <h1 className="text-3xl font-bold text-gray-900">Create Category</h1>
                         <p className="text-gray-600">Add a new product category to organize your inventory</p>
                     </div>
-                    <Link 
-                        href="/admin/categories" 
+                    <Link
+                        href="/admin/categories"
                         className="inline-flex items-center px-4 py-2.5 bg-gray-900 text-white text-sm font-semibold rounded-lg hover:bg-gray-800 transition-colors"
                     >
                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -212,8 +212,8 @@ export default function Create({ parent_categories = [] }: Props) {
                         {/* Form Actions */}
                         <div className="bg-gray-50 px-8 py-6">
                             <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
-                                <Link 
-                                    href="/admin/categories" 
+                                <Link
+                                    href="/admin/categories"
                                     className="inline-flex items-center justify-center px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-50 transition-colors"
                                 >
                                     <X className="w-4 h-4 mr-2" />
