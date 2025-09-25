@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import { ArrowLeft, Save, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Save, Upload, X, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
 
 interface Brand {
@@ -32,6 +32,7 @@ interface Service {
   name: string;
   type: string;
   price: number;
+  is_optional: boolean;
 }
 
 interface PageProps {
@@ -120,6 +121,41 @@ export default function Create({ brands, categories, attributes, compatible_mode
   const setPrimaryImage = (index: number) => {
     setPrimaryImageIndex(index);
     setData('primary_image_index', index);
+  };
+
+  const handleAttributeChange = (attributeId: number, value: string) => {
+    setData('attributes', {
+      ...data.attributes,
+      [attributeId]: value
+    });
+  };
+
+  const handleCompatibleModelToggle = (modelId: number) => {
+    const currentModels = data.compatible_models;
+    const isSelected = currentModels.includes(modelId);
+
+    if (isSelected) {
+      setData('compatible_models', currentModels.filter(id => id !== modelId));
+    } else {
+      setData('compatible_models', [...currentModels, modelId]);
+    }
+  };
+
+  const addService = () => {
+    setData('services', [
+      ...data.services,
+      { service_id: 0, custom_price: '', is_mandatory: false, is_free: false }
+    ]);
+  };
+
+  const removeService = (index: number) => {
+    setData('services', data.services.filter((_, i) => i !== index));
+  };
+
+  const updateService = (index: number, field: string, value: any) => {
+    const updatedServices = [...data.services];
+    updatedServices[index] = { ...updatedServices[index], [field]: value };
+    setData('services', updatedServices);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -450,6 +486,290 @@ export default function Create({ brands, categories, attributes, compatible_mode
                   />
                   <span className="text-sm font-medium text-gray-700">Featured Product</span>
                 </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Physical Dimensions */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">Physical Dimensions</h3>
+              <p className="text-sm text-gray-600 mt-1">Product dimensions for shipping calculations</p>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Weight (kg)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={data.weight}
+                    onChange={(e) => setData('weight', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Length (cm)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={data.length}
+                    onChange={(e) => setData('length', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Width (cm)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={data.width}
+                    onChange={(e) => setData('width', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Height (cm)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={data.height}
+                    onChange={(e) => setData('height', e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Product Attributes */}
+          {attributes && attributes.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Product Attributes</h3>
+                <p className="text-sm text-gray-600 mt-1">Additional product specifications</p>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {attributes.map(attribute => (
+                    <div key={attribute.id}>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {attribute.name}
+                      </label>
+                      {attribute.type === 'text' && (
+                        <input
+                          type="text"
+                          value={data.attributes[attribute.id] || ''}
+                          onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={`Enter ${attribute.name.toLowerCase()}`}
+                        />
+                      )}
+                      {attribute.type === 'number' && (
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={data.attributes[attribute.id] || ''}
+                          onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={`Enter ${attribute.name.toLowerCase()}`}
+                        />
+                      )}
+                      {attribute.type === 'boolean' && (
+                        <div className="flex items-center gap-3 mt-2">
+                          <input
+                            type="checkbox"
+                            checked={data.attributes[attribute.id] === 'true'}
+                            onChange={(e) => handleAttributeChange(attribute.id, e.target.checked ? 'true' : 'false')}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-600">Yes</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Compatible Models */}
+          {compatible_models && compatible_models.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Compatible Boiler Models</h3>
+                <p className="text-sm text-gray-600 mt-1">Select which boiler models this part is compatible with</p>
+              </div>
+              <div className="p-6">
+                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+                  {compatible_models.map(model => (
+                    <div key={model.id} className="flex items-center p-3 border-b border-gray-100 last:border-b-0">
+                      <input
+                        type="checkbox"
+                        id={`model-${model.id}`}
+                        checked={data.compatible_models.includes(model.id)}
+                        onChange={() => handleCompatibleModelToggle(model.id)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <label htmlFor={`model-${model.id}`} className="ml-3 flex-1 cursor-pointer">
+                        <div className="font-medium text-gray-900">{model.brand_name} - {model.model_name}</div>
+                        {model.model_code && (
+                          <div className="text-sm text-gray-500">Code: {model.model_code}</div>
+                        )}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+                {data.compatible_models.length > 0 && (
+                  <div className="mt-3 text-sm text-blue-600">
+                    {data.compatible_models.length} model(s) selected
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Product Services */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Product Services</h3>
+                <p className="text-sm text-gray-600 mt-1">Additional services available for this product</p>
+              </div>
+              <button
+                type="button"
+                onClick={addService}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Service
+              </button>
+            </div>
+            <div className="p-6">
+              {data.services.length > 0 ? (
+                <div className="space-y-4">
+                  {data.services.map((service, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Service</label>
+                          <select
+                            value={service.service_id}
+                            onChange={(e) => updateService(index, 'service_id', parseInt(e.target.value))}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value={0}>Select Service</option>
+                            {services.map(s => (
+                              <option key={s.id} value={s.id}>{s.name} - £{s.price}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Custom Price</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={service.custom_price}
+                            onChange={(e) => updateService(index, 'custom_price', e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Leave empty to use default"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={service.is_mandatory}
+                              onChange={(e) => updateService(index, 'is_mandatory', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">Mandatory</span>
+                          </label>
+
+                          <label className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={service.is_free}
+                              onChange={(e) => updateService(index, 'is_free', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">Free Service</span>
+                          </label>
+                        </div>
+
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={() => removeService(index)}
+                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No services added yet. Click "Add Service" to add services for this product.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* SEO Settings */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">SEO Settings</h3>
+              <p className="text-sm text-gray-600 mt-1">Optimize your product for search engines</p>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Meta Title</label>
+                <input
+                  type="text"
+                  value={data.meta_title}
+                  onChange={(e) => setData('meta_title', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="SEO optimized title"
+                  maxLength={60}
+                />
+                <p className="text-xs text-gray-500 mt-1">{data.meta_title.length}/60 characters</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Meta Description</label>
+                <textarea
+                  value={data.meta_description}
+                  onChange={(e) => setData('meta_description', e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="SEO optimized description"
+                  maxLength={160}
+                />
+                <p className="text-xs text-gray-500 mt-1">{data.meta_description.length}/160 characters</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Product Slug</label>
+                <input
+                  type="text"
+                  value={data.slug}
+                  onChange={(e) => setData('slug', e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Leave empty to auto-generate from product name"
+                />
+                <p className="text-xs text-gray-500 mt-1">URL-friendly version of the product name</p>
               </div>
             </div>
           </div>

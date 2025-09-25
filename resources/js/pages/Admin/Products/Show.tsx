@@ -351,7 +351,7 @@ export default function Show({ product }: PageProps) {
                             {service.pivot.is_free ? (
                               'Free'
                             ) : (
-                              `£${(service.pivot.custom_price || service.price).toFixed(2)}`
+                              `£${Number(service.pivot.custom_price || service.price).toFixed(2)}`
                             )}
                           </div>
                           {service.pivot.is_mandatory && (

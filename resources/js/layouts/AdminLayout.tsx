@@ -18,7 +18,20 @@ import {
     ChevronLeft,
     ChevronRight,
     CheckCircle,
-    XCircle
+    XCircle,
+    ChevronDown,
+    ChevronUp,
+    FileText,
+    BarChart3,
+    Database,
+    Zap,
+    Eye,
+    Shield,
+    Wrench,
+    Upload,
+    Layers,
+    Target,
+    Gift
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -43,16 +56,35 @@ interface PageProps {
     };
 }
 
+interface NavigationItem {
+    name: string;
+    href?: string;
+    icon: any;
+    children?: NavigationItem[];
+}
+
 const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     const { auth, flash } = usePage<PageProps>().props;
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [flashVisible, setFlashVisible] = useState(true);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [currentPath, setCurrentPath] = useState('');
+    const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
 
     useEffect(() => {
         setCurrentPath(window.location.pathname);
     }, []);
+
+    // Auto-expand groups that contain active routes when path changes
+    useEffect(() => {
+        const activeGroups = navigation
+            .filter(group => group.children && hasActiveChild(group))
+            .map(group => group.name);
+
+        if (activeGroups.length > 0) {
+            setExpandedGroups(prev => [...new Set([...prev, ...activeGroups])]);
+        }
+    }, [currentPath]);
 
     useEffect(() => {
         if (flash?.success || flash?.error) {
@@ -64,62 +96,174 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         }
     }, [flash]);
 
-    const navigation = [
+    const navigation: NavigationItem[] = [
         {
             name: 'Dashboard',
             href: '/admin/dashboard',
             icon: LayoutDashboard,
         },
         {
-            name: 'Products',
-            href: '/admin/products',
+            name: 'Catalog Management',
             icon: Package,
-        },
-        {
-            name: 'Categories',
-            href: '/admin/categories',
-            icon: Tag,
-        },
-        {
-            name: 'Brands',
-            href: '/admin/brands',
-            icon: Lightbulb,
-        },
-        {
-            name: 'Orders',
-            href: '/admin/orders',
-            icon: ShoppingBag,
-        },
-        {
-            name: 'Users',
-            href: '/admin/users',
-            icon: Users,
+            children: [
+                {
+                    name: 'Products',
+                    href: '/admin/products',
+                    icon: Package,
+                },
+                {
+                    name: 'Categories',
+                    href: '/admin/categories',
+                    icon: Tag,
+                },
+                {
+                    name: 'Brands',
+                    href: '/admin/brands',
+                    icon: Lightbulb,
+                },
+                {
+                    name: 'Product Attributes',
+                    href: '/admin/product-attributes',
+                    icon: Layers,
+                },
+                {
+                    name: 'Compatible Models',
+                    href: '/admin/compatible-models',
+                    icon: Target,
+                }
+            ]
         },
         {
             name: 'Services',
-            href: '/admin/product-services',
-            icon: Settings,
+            icon: Wrench,
+            children: [
+                {
+                    name: 'Product Services',
+                    href: '/admin/product-services',
+                    icon: Settings,
+                }
+            ]
         },
         {
-            name: 'Coupons',
-            href: '/admin/coupons',
-            icon: Ticket,
+            name: 'Order Management',
+            icon: ShoppingBag,
+            children: [
+                {
+                    name: 'All Orders',
+                    href: '/admin/orders',
+                    icon: ShoppingBag,
+                },
+                {
+                    name: 'Export CSV',
+                    href: '/admin/orders/export/csv',
+                    icon: Upload,
+                },
+                {
+                    name: 'Export Excel',
+                    href: '/admin/orders/export/excel',
+                    icon: FileText,
+                }
+            ]
         },
         {
-            name: 'Reviews',
-            href: '/admin/product-reviews',
-            icon: Star,
+            name: 'Customer Management',
+            icon: Users,
+            children: [
+                {
+                    name: 'All Users',
+                    href: '/admin/users',
+                    icon: Users,
+                },
+                {
+                    name: 'Product Reviews',
+                    href: '/admin/product-reviews',
+                    icon: Star,
+                },
+                {
+                    name: 'Contact Inquiries',
+                    href: '/admin/contact-inquiries',
+                    icon: MessageSquare,
+                }
+            ]
         },
         {
-            name: 'Inquiries',
-            href: '/admin/contact-inquiries',
-            icon: MessageSquare,
+            name: 'Marketing',
+            icon: Gift,
+            children: [
+                {
+                    name: 'Coupons',
+                    href: '/admin/coupons',
+                    icon: Ticket,
+                }
+            ]
         },
         {
-            name: 'Settings',
-            href: '/admin/settings',
-            icon: Settings,
+            name: 'Reports & Analytics',
+            icon: BarChart3,
+            children: [
+                {
+                    name: 'Sales Report',
+                    href: '/admin/reports/sales',
+                    icon: BarChart3,
+                },
+                {
+                    name: 'Products Report',
+                    href: '/admin/reports/products',
+                    icon: Package,
+                },
+                {
+                    name: 'Customers Report',
+                    href: '/admin/reports/customers',
+                    icon: Users,
+                },
+                {
+                    name: 'Inventory Report',
+                    href: '/admin/reports/inventory',
+                    icon: Database,
+                },
+                {
+                    name: 'Reviews Report',
+                    href: '/admin/reports/reviews',
+                    icon: Star,
+                }
+            ]
         },
+        {
+            name: 'System Management',
+            icon: Database,
+            children: [
+                {
+                    name: 'Settings',
+                    href: '/admin/settings',
+                    icon: Settings,
+                },
+                {
+                    name: 'System Info',
+                    href: '/admin/system/info',
+                    icon: Database,
+                },
+                {
+                    name: 'File Manager',
+                    href: '/admin/files/browse',
+                    icon: Upload,
+                },
+                {
+                    name: 'System Logs',
+                    href: '/admin/system/logs',
+                    icon: FileText,
+                },
+                {
+                    name: 'Clear Cache',
+                    href: '/admin/system/cache/clear',
+                    icon: Zap,
+                },
+                {
+                    name: 'Create Backup',
+                    href: '/admin/system/backup',
+                    icon: Shield,
+                }
+            ]
+        }
     ];
 
     const handleLogout = () => {
@@ -128,6 +272,129 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
     const isActive = (href: string) => {
         return currentPath === href || currentPath.startsWith(href + '/');
+    };
+
+    const hasActiveChild = (group: NavigationItem): boolean => {
+        if (!group.children) return false;
+        return group.children.some(child =>
+            child.href && (currentPath === child.href || currentPath.startsWith(child.href + '/'))
+        );
+    };
+
+    const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev =>
+            prev.includes(groupName)
+                ? prev.filter(name => name !== groupName)
+                : [...prev, groupName]
+        );
+    };
+
+    const renderNavigationItem = (item: NavigationItem, level: number = 0) => {
+        const Icon = item.icon;
+        const isExpanded = expandedGroups.includes(item.name);
+        const hasChildren = item.children && item.children.length > 0;
+        const isGroupActive = hasChildren && hasActiveChild(item);
+        const isItemActive = item.href && isActive(item.href);
+        const isActiveItem = isItemActive || isGroupActive;
+
+        if (hasChildren) {
+            return (
+                <div key={item.name} className="space-y-1">
+                    <button
+                        onClick={() => !isCollapsed && toggleGroup(item.name)}
+                        className={`group flex items-center w-full px-3 py-2.5 text-xs font-medium rounded-lg
+                            transition-all duration-200 hover:scale-[1.02] relative overflow-hidden
+                            ${isGroupActive
+                                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20'
+                                : 'text-slate-600 hover:bg-gradient-to-r hover:from-slate-100 hover:to-blue-50 hover:text-blue-700'
+                            }`}
+                    >
+                        {isGroupActive && (
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-indigo-400/20 animate-pulse" />
+                        )}
+                        <Icon className={`${isCollapsed ? 'w-5 h-5' : 'w-4 h-4 mr-3'} relative z-10
+                            ${isGroupActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-600'}
+                            transition-colors duration-200`} />
+                        {!isCollapsed && (
+                            <>
+                                <span className="relative z-10 font-medium flex-1 text-left">{item.name}</span>
+                                <div className="relative z-10 ml-2">
+                                    {isExpanded ?
+                                        <ChevronUp className="w-3 h-3" /> :
+                                        <ChevronDown className="w-3 h-3" />
+                                    }
+                                </div>
+                            </>
+                        )}
+                        {isGroupActive && !isCollapsed && (
+                            <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                        )}
+                    </button>
+
+                    {/* Dropdown Items */}
+                    {!isCollapsed && hasChildren && isExpanded && (
+                        <div className="ml-4 space-y-1 border-l-2 border-slate-200 pl-4">
+                            {item.children!.map(child => (
+                                <Link
+                                    key={child.name}
+                                    href={child.href!}
+                                    className={`group flex items-center px-3 py-2 text-xs font-medium rounded-lg
+                                        transition-all duration-200 hover:scale-[1.01] relative overflow-hidden
+                                        ${isActive(child.href!)
+                                            ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/20'
+                                            : 'text-slate-500 hover:bg-gradient-to-r hover:from-slate-50 hover:to-emerald-50 hover:text-emerald-700'
+                                        }`}
+                                >
+                                    {isActive(child.href!) && (
+                                        <div className="absolute inset-0 bg-gradient-to-r from-emerald-400/20 to-teal-400/20 animate-pulse" />
+                                    )}
+                                    <child.icon className={`w-3 h-3 mr-2 relative z-10
+                                        ${isActive(child.href!) ? 'text-white' : 'text-slate-400 group-hover:text-emerald-600'}
+                                        transition-colors duration-200`} />
+                                    <span className="relative z-10 font-medium">{child.name}</span>
+                                    {isActive(child.href!) && (
+                                        <div className="ml-auto w-1 h-1 bg-white rounded-full animate-pulse" />
+                                    )}
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Collapsed mode indicator */}
+                    {isCollapsed && hasChildren && isGroupActive && (
+                        <div className="absolute right-1 top-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    )}
+                </div>
+            );
+        }
+
+        // Single navigation item (no children)
+        return (
+            <Link
+                key={item.name}
+                href={item.href!}
+                className={`group flex items-center px-3 py-2.5 text-xs font-medium rounded-lg
+                    transition-all duration-200 hover:scale-[1.02] relative overflow-hidden
+                    ${isItemActive
+                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20'
+                        : 'text-slate-600 hover:bg-gradient-to-r hover:from-slate-100 hover:to-blue-50 hover:text-blue-700'
+                    }`}
+            >
+                {isItemActive && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-indigo-400/20 animate-pulse" />
+                )}
+                <Icon className={`${isCollapsed ? 'w-5 h-5' : 'w-4 h-4 mr-3'} relative z-10
+                    ${isItemActive ? 'text-white' : 'text-slate-500 group-hover:text-blue-600'}
+                    transition-colors duration-200`} />
+                {!isCollapsed && (
+                    <span className="relative z-10 font-medium">{item.name}</span>
+                )}
+
+                {isItemActive && !isCollapsed && (
+                    <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                )}
+            </Link>
+        );
     };
 
     return (
@@ -205,37 +472,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                                 background: #94a3b8;
                             }
                         `}</style>
-                        <div className="space-y-1">
-                            {navigation.map((item) => {
-                                const Icon = item.icon;
-                                const active = isActive(item.href);
-                                return (
-                                    <Link
-                                        key={item.name}
-                                        href={item.href}
-                                        className={`group flex items-center px-3 py-2.5 text-xs font-medium rounded-lg
-                                            transition-all duration-200 hover:scale-[1.02] relative overflow-hidden
-                                            ${active
-                                                ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md shadow-blue-500/20'
-                                                : 'text-slate-600 hover:bg-gradient-to-r hover:from-slate-100 hover:to-blue-50 hover:text-blue-700'
-                                            }`}
-                                    >
-                                        {active && (
-                                            <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 to-indigo-400/20 animate-pulse" />
-                                        )}
-                                        <Icon className={`${isCollapsed ? 'w-5 h-5' : 'w-4 h-4 mr-3'} relative z-10
-                                            ${active ? 'text-white' : 'text-slate-500 group-hover:text-blue-600'}
-                                            transition-colors duration-200`} />
-                                        {!isCollapsed && (
-                                            <span className="relative z-10 font-medium">{item.name}</span>
-                                        )}
-
-                                        {active && !isCollapsed && (
-                                            <div className="ml-auto w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                                        )}
-                                    </Link>
-                                );
-                            })}
+                        <div className="space-y-2">
+                            {navigation.map((item) => renderNavigationItem(item))}
                         </div>
                     </nav>
                 </div>
