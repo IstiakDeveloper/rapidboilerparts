@@ -37,6 +37,7 @@ class ProductAttribute extends Model
         return $query->where('is_filterable', true);
     }
 
+
     public function scopeOrdered($query)
     {
         return $query->orderBy('sort_order', 'asc');

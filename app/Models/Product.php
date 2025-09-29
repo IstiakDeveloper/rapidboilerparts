@@ -196,4 +196,9 @@ class Product extends Model
 
         return $service->getFinalPrice($this->id);
     }
+
+    public function serviceAssignments(): HasMany
+    {
+        return $this->hasMany(ProductServiceAssignment::class);
+    }
 }

@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Category;
 use App\Models\Brand;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,16 +24,16 @@ class ProductController extends Controller
             $searchTerm = $request->search;
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', "%{$searchTerm}%")
-                  ->orWhere('sku', 'like', "%{$searchTerm}%")
-                  ->orWhere('manufacturer_part_number', 'like', "%{$searchTerm}%")
-                  ->orWhere('gc_number', 'like', "%{$searchTerm}%")
-                  ->orWhere('description', 'like', "%{$searchTerm}%")
-                  ->orWhereHas('brand', function ($brandQuery) use ($searchTerm) {
-                      $brandQuery->where('name', 'like', "%{$searchTerm}%");
-                  })
-                  ->orWhereHas('category', function ($catQuery) use ($searchTerm) {
-                      $catQuery->where('name', 'like', "%{$searchTerm}%");
-                  });
+                    ->orWhere('sku', 'like', "%{$searchTerm}%")
+                    ->orWhere('manufacturer_part_number', 'like', "%{$searchTerm}%")
+                    ->orWhere('gc_number', 'like', "%{$searchTerm}%")
+                    ->orWhere('description', 'like', "%{$searchTerm}%")
+                    ->orWhereHas('brand', function ($brandQuery) use ($searchTerm) {
+                        $brandQuery->where('name', 'like', "%{$searchTerm}%");
+                    })
+                    ->orWhereHas('category', function ($catQuery) use ($searchTerm) {
+                        $catQuery->where('name', 'like', "%{$searchTerm}%");
+                    });
             });
         }
 
@@ -140,9 +141,11 @@ class ProductController extends Controller
 
         // Get filter options
         $brands = Brand::active()
-            ->withCount(['products' => function ($q) {
-                $q->active();
-            }])
+            ->withCount([
+                'products' => function ($q) {
+                    $q->active();
+                }
+            ])
             ->having('products_count', '>', 0)
             ->orderBy('name')
             ->get()
@@ -156,9 +159,11 @@ class ProductController extends Controller
             });
 
         $categories = Category::active()
-            ->withCount(['products' => function ($q) {
-                $q->active();
-            }])
+            ->withCount([
+                'products' => function ($q) {
+                    $q->active();
+                }
+            ])
             ->having('products_count', '>', 0)
             ->orderBy('name')
             ->get()
@@ -183,100 +188,197 @@ class ProductController extends Controller
                 'max' => (float) $priceRange->max_price
             ],
             'filters' => $request->only([
-                'search', 'brand', 'category', 'part_number', 'gc_number',
-                'min_price', 'max_price', 'featured', 'in_stock_only', 'sort', 'order'
+                'search',
+                'brand',
+                'category',
+                'part_number',
+                'gc_number',
+                'min_price',
+                'max_price',
+                'featured',
+                'in_stock_only',
+                'sort',
+                'order'
             ]),
             'totalProducts' => Product::active()->count(),
         ]);
     }
 
-    public function show(Product $product): Response
+    public function show(string $slug): Response
     {
-        $product->load(['brand', 'category', 'images', 'reviews.user', 'compatibleModels']);
+        $product = Product::with([
+            'brand',
+            'category',
+            'images' => fn($q) => $q->ordered(),
+            'reviews' => fn($q) => $q->approved()->with('user'),
+            'attributeValues.attribute',
+            'compatibleModels' => fn($q) => $q->active(),
+        ])
+            ->where('slug', $slug)
+            ->where('status', 'active')
+            ->firstOrFail();
 
-        $productData = [
-            'id' => $product->id,
-            'name' => $product->name,
-            'slug' => $product->slug,
-            'sku' => $product->sku,
-            'manufacturer_part_number' => $product->manufacturer_part_number,
-            'gc_number' => $product->gc_number,
-            'description' => $product->description,
-            'short_description' => $product->short_description,
-            'price' => (float) $product->price,
-            'sale_price' => $product->sale_price ? (float) $product->sale_price : null,
-            'final_price' => (float) $product->final_price,
-            'discount_percentage' => $product->discount_percentage,
-            'stock_quantity' => $product->stock_quantity,
-            'in_stock' => $product->in_stock,
-            'weight' => $product->weight,
-            'brand' => [
-                'id' => $product->brand->id,
-                'name' => $product->brand->name,
-                'slug' => $product->brand->slug,
-                'logo' => $product->brand->logo
-            ],
-            'category' => [
-                'id' => $product->category->id,
-                'name' => $product->category->name,
-                'slug' => $product->category->slug
-            ],
-            'images' => $product->images->map(function ($image) {
-                return [
-                    'id' => $image->id,
-                    'image_path' => $image->image_path,
-                    'alt_text' => $image->alt_text,
-                    'is_primary' => $image->is_primary
-                ];
-            }),
-            'reviews' => $product->reviews->map(function ($review) {
-                return [
-                    'id' => $review->id,
-                    'rating' => $review->rating,
-                    'title' => $review->title,
-                    'comment' => $review->comment,
-                    'user' => $review->user->first_name . ' ' . substr($review->user->last_name, 0, 1) . '.',
-                    'created_at' => $review->created_at->format('d M Y')
-                ];
-            }),
-            'compatible_models' => $product->compatibleModels->map(function ($model) {
-                return [
-                    'id' => $model->id,
-                    'brand_name' => $model->brand_name,
-                    'model_name' => $model->model_name,
-                    'model_code' => $model->model_code
-                ];
-            }),
-            'average_rating' => round($product->reviews->avg('rating') ?? 0, 1),
-            'total_reviews' => $product->reviews->count(),
-        ];
-
-        // Related products
-        $relatedProducts = Product::with(['brand', 'images'])
-            ->active()
-            ->inStock()
-            ->where('category_id', $product->category_id)
-            ->where('id', '!=', $product->id)
-            ->limit(4)
+        // Get assigned services
+        $productServices = DB::table('product_service_assignments')
+            ->join('product_services', 'product_service_assignments.product_service_id', '=', 'product_services.id')
+            ->where('product_service_assignments.product_id', $product->id)
+            ->where('product_services.is_active', true)
+            ->select(
+                'product_services.id',
+                'product_services.name',
+                'product_services.slug',
+                'product_services.description',
+                'product_services.type',
+                'product_services.price as default_price',
+                'product_service_assignments.custom_price',
+                'product_service_assignments.is_mandatory',
+                'product_service_assignments.is_free as assignment_is_free',
+                'product_services.is_free as service_is_free',
+                'product_services.is_optional',
+                'product_services.conditions',
+                'product_services.sort_order'
+            )
+            ->orderBy('product_services.sort_order')
             ->get()
-            ->map(function ($product) {
-                $primaryImage = $product->images->where('is_primary', true)->first();
+            ->map(function ($service) {
+                $finalPrice = $service->custom_price ?? $service->default_price;
+                $isFree = $service->assignment_is_free || $service->service_is_free;
 
                 return [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'slug' => $product->slug,
-                    'price' => (float) $product->price,
-                    'sale_price' => $product->sale_price ? (float) $product->sale_price : null,
-                    'final_price' => (float) $product->final_price,
-                    'image' => $primaryImage ? $primaryImage->image_path : 'products/placeholder-product.jpg',
-                    'brand' => $product->brand->name,
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'slug' => $service->slug,
+                    'description' => $service->description,
+                    'type' => $service->type,
+                    'price' => $isFree ? 0 : (float) $finalPrice,
+                    'is_free' => $isFree,
+                    'is_mandatory' => (bool) $service->is_mandatory,
+                    'is_optional' => (bool) $service->is_optional,
                 ];
             });
 
+        // Related products
+        $relatedProducts = Product::with(['brand', 'images'])
+            ->where('category_id', $product->category_id)
+            ->where('id', '!=', $product->id)
+            ->where('status', 'active')
+            ->inStock()
+            ->limit(8)
+            ->get()
+            ->map(function ($prod) {
+                $primaryImage = $prod->images->where('is_primary', true)->first();
+                return [
+                    'id' => $prod->id,
+                    'name' => $prod->name,
+                    'slug' => $prod->slug,
+                    'price' => (float) $prod->price,
+                    'sale_price' => $prod->sale_price ? (float) $prod->sale_price : null,
+                    'final_price' => (float) $prod->final_price,
+                    'discount_percentage' => $prod->discount_percentage,
+                    'image' => $primaryImage ? $primaryImage->image_path : 'products/placeholder-product.jpg',
+                    'brand' => ['name' => $prod->brand->name, 'slug' => $prod->brand->slug],
+                    'rating' => round($prod->reviews->avg('rating') ?? 0, 1),
+                    'in_stock' => $prod->in_stock,
+                ];
+            });
+
+        // Calculate rating breakdown
+        $ratingBreakdown = [
+            5 => $product->reviews->where('rating', 5)->count(),
+            4 => $product->reviews->where('rating', 4)->count(),
+            3 => $product->reviews->where('rating', 3)->count(),
+            2 => $product->reviews->where('rating', 2)->count(),
+            1 => $product->reviews->where('rating', 1)->count(),
+        ];
+
+        $primaryImage = $product->images->where('is_primary', true)->first();
+
         return Inertia::render('Products/Show', [
-            'product' => $productData,
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'slug' => $product->slug,
+                'sku' => $product->sku,
+                'manufacturer_part_number' => $product->manufacturer_part_number,
+                'gc_number' => $product->gc_number,
+                'short_description' => $product->short_description,
+                'description' => $product->description,
+                'price' => (float) $product->price,
+                'sale_price' => $product->sale_price ? (float) $product->sale_price : null,
+                'cost_price' => $product->cost_price ? (float) $product->cost_price : null,
+                'final_price' => (float) $product->final_price,
+                'discount_percentage' => $product->discount_percentage,
+                'stock_quantity' => $product->stock_quantity,
+                'in_stock' => $product->in_stock,
+                'low_stock_threshold' => $product->low_stock_threshold,
+                'is_featured' => $product->is_featured,
+                'manage_stock' => $product->manage_stock,
+                'weight' => $product->weight ? (float) $product->weight : null,
+                'dimensions' => [
+                    'length' => $product->length ? (float) $product->length : null,
+                    'width' => $product->width ? (float) $product->width : null,
+                    'height' => $product->height ? (float) $product->height : null,
+                ],
+                'brand' => [
+                    'id' => $product->brand->id,
+                    'name' => $product->brand->name,
+                    'slug' => $product->brand->slug,
+                    'logo' => $product->brand->logo,
+                    'website' => $product->brand->website,
+                ],
+                'category' => [
+                    'id' => $product->category->id,
+                    'name' => $product->category->name,
+                    'slug' => $product->category->slug,
+                ],
+                'images' => $product->images->map(fn($img) => [
+                    'id' => $img->id,
+                    'image_path' => $img->image_path,
+                    'alt_text' => $img->alt_text ?? $product->name,
+                    'is_primary' => $img->is_primary,
+                    'sort_order' => $img->sort_order,
+                ]),
+                'primary_image' => $primaryImage ? $primaryImage->image_path : 'products/placeholder-product.jpg',
+                'attributes' => $product->attributeValues->map(fn($av) => [
+                    'id' => $av->id,
+                    'name' => $av->attribute->name,
+                    'slug' => $av->attribute->slug,
+                    'value' => $av->value,
+                    'type' => $av->attribute->type,
+                ]),
+                'compatible_models' => $product->compatibleModels->groupBy('brand_name')->map(fn($models, $brand) => [
+                    'brand' => $brand,
+                    'models' => $models->map(fn($cm) => [
+                        'id' => $cm->id,
+                        'model_name' => $cm->model_name,
+                        'model_code' => $cm->model_code,
+                        'year_from' => $cm->year_from,
+                        'year_to' => $cm->year_to,
+                        'year_range' => ($cm->year_from && $cm->year_to)
+                            ? "{$cm->year_from} - {$cm->year_to}"
+                            : ($cm->year_from ? "From {$cm->year_from}" : null),
+                    ])->values()
+                ])->values(),
+                'rating' => round($product->reviews->avg('rating') ?? 0, 1),
+                'reviews_count' => $product->reviews->count(),
+                'rating_breakdown' => $ratingBreakdown,
+                'meta_title' => $product->meta_title,
+                'meta_description' => $product->meta_description,
+                'created_at' => $product->created_at->format('M d, Y'),
+                'updated_at' => $product->updated_at->format('M d, Y'),
+            ],
+            'services' => $productServices,
+            'reviews' => $product->reviews->map(fn($review) => [
+                'id' => $review->id,
+                'rating' => $review->rating,
+                'title' => $review->title,
+                'comment' => $review->comment,
+                'user_name' => $review->user->first_name . ' ' . substr($review->user->last_name, 0, 1) . '.',
+                'created_at' => $review->created_at->format('M d, Y'),
+                'formatted_date' => $review->created_at->diffForHumans(),
+            ]),
             'relatedProducts' => $relatedProducts,
         ]);
     }
+
 }

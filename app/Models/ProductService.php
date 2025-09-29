@@ -36,24 +36,13 @@ class ProductService extends Model
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class, 'product_service_assignments')
-                    ->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions'])
-                    ->withTimestamps();
-    }
-
-    // Scopes
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
+            ->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions'])
+            ->withTimestamps();
     }
 
     public function scopeByType($query, $type)
     {
         return $query->where('type', $type);
-    }
-
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('sort_order', 'asc');
     }
 
     // Methods
@@ -90,5 +79,15 @@ class ProductService extends Model
 
         $assignment = $this->products()->where('product_id', $productId)->first();
         return $assignment && $assignment->pivot->is_free;
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order', 'asc');
     }
 }

@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
-import { ArrowLeft, Save, Upload, X, Image as ImageIcon, Plus, Trash2 } from 'lucide-react';
 import AdminLayout from '@/Layouts/AdminLayout';
+import {
+    Package, Plus, X, Upload, ImageIcon, Settings, Tags, Wrench,
+    AlertTriangle, Save, Eye, EyeOff, Star, StarOff, Trash2, Edit3
+} from 'lucide-react';
 
 interface Brand {
     id: number;
@@ -13,257 +16,351 @@ interface Category {
     name: string;
 }
 
-interface Attribute {
+interface ProductService {
+    id: number;
+    name: string;
+    slug: string;
+    description?: string;
+    type: 'setup' | 'delivery' | 'installation' | 'maintenance' | 'other';
+    price: number;
+    is_optional: boolean;
+    is_free: boolean;
+    pivot?: {
+        custom_price?: number;
+        is_mandatory: boolean;
+        is_free: boolean;
+        conditions?: string;
+    };
+}
+
+interface ProductAttribute {
     id: number;
     name: string;
     slug: string;
     type: 'text' | 'number' | 'select' | 'multiselect' | 'boolean';
     is_required: boolean;
-    options?: string[]; // For select/multiselect types
+    is_filterable: boolean;
 }
 
 interface CompatibleModel {
     id: number;
     brand_name: string;
     model_name: string;
-    model_code: string;
-}
-
-interface Service {
-    id: number;
-    name: string;
-    type: string;
-    price: number;
-    is_optional: boolean;
+    model_code?: string;
+    year_from?: number;
+    year_to?: number;
 }
 
 interface ProductImage {
     id: number;
     image_path: string;
-    alt_text: string;
+    alt_text?: string;
     sort_order: number;
     is_primary: boolean;
+}
+
+interface AttributeValue {
+    id: number;
+    product_attribute_id: number;
+    value: string;
+    attribute: ProductAttribute;
 }
 
 interface Product {
     id: number;
     name: string;
     slug: string;
+    short_description?: string;
+    description?: string;
     sku: string;
+    manufacturer_part_number?: string;
+    gc_number?: string;
+    price: number;
+    sale_price?: number;
+    cost_price?: number;
+    stock_quantity: number;
+    manage_stock: boolean;
+    low_stock_threshold: number;
+    meta_title?: string;
+    meta_description?: string;
+    status: 'active' | 'inactive' | 'draft';
+    is_featured: boolean;
     brand_id: number;
     category_id: number;
-    short_description: string;
-    description: string;
-    price: number;
-    sale_price: number;
-    cost_price: number;
-    stock_quantity: number;
-    low_stock_threshold: number;
-    manufacturer_part_number: string;
-    gc_number: string;
-    weight: number;
-    length: number;
-    width: number;
-    height: number;
-    meta_title: string;
-    meta_description: string;
-    status: string;
-    is_featured: boolean;
-    manage_stock: boolean;
+    weight?: number;
+    length?: number;
+    width?: number;
+    height?: number;
+    brand: Brand;
+    category: Category;
     images: ProductImage[];
-    services: Array<{
-        id: number;
-        name: string;
-        type: string;
-        price: number;
-        pivot: {
-            custom_price: number;
-            is_mandatory: boolean;
-            is_free: boolean;
-        };
-    }>;
+    services: ProductService[];
+    attributeValues: AttributeValue[];
+    compatibleModels: CompatibleModel[];
 }
 
-interface PageProps {
+interface Props {
     product: Product;
     brands: Brand[];
     categories: Category[];
-    attributes: Attribute[];
-    compatible_models: CompatibleModel[];
-    services: Service[];
-    attribute_values: Record<number, string>;
-    selected_compatible_models: number[];
+    services: ProductService[];
+    attributes: ProductAttribute[];
+    compatibleModels: CompatibleModel[];
 }
 
-export default function Edit({
-    product,
-    brands,
-    categories,
-    attributes,
-    compatible_models,
-    services,
-    attribute_values,
-    selected_compatible_models
-}: PageProps) {
-    const [selectedImages, setSelectedImages] = useState<File[]>([]);
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-    const [existingImages, setExistingImages] = useState<ProductImage[]>(product.images || []);
-    const [deletedImageIds, setDeletedImageIds] = useState<number[]>([]);
+interface FormData {
+    name: string;
+    slug: string;
+    short_description: string;
+    description: string;
+    sku: string;
+    manufacturer_part_number: string;
+    gc_number: string;
+    price: string;
+    sale_price: string;
+    cost_price: string;
+    stock_quantity: string;
+    manage_stock: boolean;
+    low_stock_threshold: string;
+    meta_title: string;
+    meta_description: string;
+    status: 'active' | 'inactive' | 'draft';
+    is_featured: boolean;
+    brand_id: string;
+    category_id: string;
+    weight: string;
+    length: string;
+    width: string;
+    height: string;
+    images: FileList | null;
+    existing_images: number[];
+    services: Array<{
+        service_id: number;
+        custom_price?: number;
+        is_mandatory: boolean;
+        is_free: boolean;
+        conditions?: Record<string, any>;
+    }>;
+    attributes: Array<{
+        attribute_id: number;
+        value: string;
+    }>;
+    compatible_models: number[];
+}
 
-    const { data, setData, post, processing, errors } = useForm({
+export default function Edit({ product, brands, categories, services, attributes, compatibleModels }: Props) {
+    const [activeTab, setActiveTab] = useState('basic');
+    const [selectedServices, setSelectedServices] = useState<number[]>([]);
+    const [selectedAttributes, setSelectedAttributes] = useState<number[]>([]);
+    const [selectedModels, setSelectedModels] = useState<number[]>([]);
+    const [imagePreview, setImagePreview] = useState<string[]>([]);
+    const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
+
+    const { data, setData, post, processing, errors, progress } = useForm<FormData>({
         name: product.name || '',
         slug: product.slug || '',
-        sku: product.sku || '',
-        brand_id: product.brand_id?.toString() || '',
-        category_id: product.category_id?.toString() || '',
         short_description: product.short_description || '',
         description: product.description || '',
+        sku: product.sku || '',
+        manufacturer_part_number: product.manufacturer_part_number || '',
+        gc_number: product.gc_number || '',
         price: product.price?.toString() || '',
         sale_price: product.sale_price?.toString() || '',
         cost_price: product.cost_price?.toString() || '',
-        stock_quantity: product.stock_quantity?.toString() || '',
+        stock_quantity: product.stock_quantity?.toString() || '0',
+        manage_stock: product.manage_stock ?? true,
         low_stock_threshold: product.low_stock_threshold?.toString() || '5',
-        manufacturer_part_number: product.manufacturer_part_number || '',
-        gc_number: product.gc_number || '',
+        meta_title: product.meta_title || '',
+        meta_description: product.meta_description || '',
+        status: product.status || 'active',
+        is_featured: product.is_featured ?? false,
+        brand_id: product.brand_id?.toString() || '',
+        category_id: product.category_id?.toString() || '',
         weight: product.weight?.toString() || '',
         length: product.length?.toString() || '',
         width: product.width?.toString() || '',
         height: product.height?.toString() || '',
-        meta_title: product.meta_title || '',
-        meta_description: product.meta_description || '',
-        status: product.status || 'active',
-        is_featured: product.is_featured || false,
-        manage_stock: product.manage_stock ?? true,
-        attributes: attribute_values || {},
-        compatible_models: selected_compatible_models || [],
-        services: product.services?.map(service => ({
-            service_id: service.id,
-            custom_price: service.pivot.custom_price?.toString() || '',
-            is_mandatory: service.pivot.is_mandatory || false,
-            is_free: service.pivot.is_free || false,
-        })) || [],
-        new_images: [] as File[],
-        new_image_alts: [] as string[],
-        existing_images: existingImages.map(img => ({
-            id: img.id,
-            alt_text: img.alt_text || '',
-            sort_order: img.sort_order,
-            is_primary: img.is_primary
-        })),
-        delete_images: [] as number[],
+        images: null,
+        existing_images: [],
+        services: [],
+        attributes: [],
+        compatible_models: [],
     });
 
-    // Update existing_images in form data when existingImages state changes
+    // Initialize form data from product
     useEffect(() => {
-        setData('existing_images', existingImages.map(img => ({
-            id: img.id,
-            alt_text: img.alt_text || '',
-            sort_order: img.sort_order,
-            is_primary: img.is_primary
-        })));
-    }, [existingImages]);
+        // Set existing images
+        setExistingImages(product.images || []);
+        setData('existing_images', (product.images || []).map(img => img.id));
 
-    // Update delete_images in form data when deletedImageIds changes
-    useEffect(() => {
-        setData('delete_images', deletedImageIds);
-    }, [deletedImageIds]);
+        // Set existing services
+        const productServices = (product.services || []).map(service => ({
+            service_id: service.id,
+            custom_price: service.pivot?.custom_price || service.price,
+            is_mandatory: service.pivot?.is_mandatory || false,
+            is_free: service.pivot?.is_free || false,
+            conditions: service.pivot?.conditions ? JSON.parse(service.pivot.conditions) : {}
+        }));
+        setSelectedServices((product.services || []).map(s => s.id));
+        setData('services', productServices);
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
-        const totalImages = existingImages.length + selectedImages.length + files.length - deletedImageIds.length;
+        // Set existing attributes
+        const productAttributes = (product.attributeValues || []).map(attrValue => ({
+            attribute_id: attrValue.product_attribute_id,
+            value: attrValue.value
+        }));
+        setSelectedAttributes((product.attributeValues || []).map(av => av.product_attribute_id));
+        setData('attributes', productAttributes);
 
-        if (totalImages > 10) {
-            alert('Maximum 10 images allowed');
-            return;
-        }
+        // Set existing compatible models
+        const modelIds = (product.compatibleModels || []).map(model => model.id);
+        setSelectedModels(modelIds);
+        setData('compatible_models', modelIds);
+    }, [product]);
 
-        const newImages = [...selectedImages, ...files];
-        setSelectedImages(newImages);
-        setData('new_images', newImages);
+    const generateSlug = useCallback((name: string) => {
+        return name
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim('-');
+    }, []);
 
-        // Create previews
-        files.forEach(file => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                setImagePreviews(prev => [...prev, e.target?.result as string]);
-            };
-            reader.readAsDataURL(file);
-        });
+    const handleNameChange = (value: string) => {
+        setData('name', value);
     };
 
-    const removeNewImage = (index: number) => {
-        const newImages = selectedImages.filter((_, i) => i !== index);
-        const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (files) {
+            setData('images', files);
 
-        setSelectedImages(newImages);
-        setImagePreviews(newPreviews);
-        setData('new_images', newImages);
+            const previews: string[] = [];
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (e.target?.result) {
+                        previews.push(e.target.result as string);
+                        if (previews.length === files.length) {
+                            setImagePreview([...previews]);
+                        }
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }
     };
 
     const removeExistingImage = (imageId: number) => {
-        setExistingImages(prev => prev.filter(img => img.id !== imageId));
-        setDeletedImageIds(prev => [...prev, imageId]);
+        setExistingImages(existingImages.filter(img => img.id !== imageId));
+        setData('existing_images', data.existing_images.filter(id => id !== imageId));
     };
 
-    const setPrimaryExistingImage = (imageId: number) => {
-        setExistingImages(prev => prev.map(img => ({
-            ...img,
-            is_primary: img.id === imageId
-        })));
-    };
-
-    const updateExistingImageAlt = (imageId: number, altText: string) => {
-        setExistingImages(prev => prev.map(img =>
-            img.id === imageId ? { ...img, alt_text: altText } : img
-        ));
-    };
-
-    const handleAttributeChange = (attributeId: number, value: string) => {
-        setData('attributes', {
-            ...data.attributes,
-            [attributeId]: value
+    const setPrimaryImage = (imageId: number) => {
+        router.post(`/admin/products/${product.id}/images/${imageId}/primary`, {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                // Update local state
+                setExistingImages(existingImages.map(img => ({
+                    ...img,
+                    is_primary: img.id === imageId
+                })));
+            }
         });
     };
 
-    const handleCompatibleModelToggle = (modelId: number) => {
-        const currentModels = data.compatible_models;
-        const isSelected = currentModels.includes(modelId);
-
-        if (isSelected) {
-            setData('compatible_models', currentModels.filter(id => id !== modelId));
-        } else {
-            setData('compatible_models', [...currentModels, modelId]);
+    const addService = (serviceId: number) => {
+        if (!selectedServices.includes(serviceId)) {
+            const service = services.find(s => s.id === serviceId);
+            if (service) {
+                setSelectedServices([...selectedServices, serviceId]);
+                setData('services', [
+                    ...data.services,
+                    {
+                        service_id: serviceId,
+                        custom_price: service.price,
+                        is_mandatory: !service.is_optional,
+                        is_free: service.is_free,
+                        conditions: {}
+                    }
+                ]);
+            }
         }
     };
 
-    const addService = () => {
-        setData('services', [
-            ...data.services,
-            { service_id: 0, custom_price: '', is_mandatory: false, is_free: false }
-        ]);
+    const removeService = (serviceId: number) => {
+        setSelectedServices(selectedServices.filter(id => id !== serviceId));
+        setData('services', data.services.filter(s => s.service_id !== serviceId));
     };
 
-    const removeService = (index: number) => {
-        setData('services', data.services.filter((_, i) => i !== index));
+    const updateService = (serviceId: number, field: string, value: any) => {
+        setData('services', data.services.map(s =>
+            s.service_id === serviceId ? { ...s, [field]: value } : s
+        ));
     };
 
-    const updateService = (index: number, field: string, value: any) => {
-        const updatedServices = [...data.services];
-        updatedServices[index] = { ...updatedServices[index], [field]: value };
-        setData('services', updatedServices);
+    const addAttribute = (attributeId: number) => {
+        if (!selectedAttributes.includes(attributeId)) {
+            setSelectedAttributes([...selectedAttributes, attributeId]);
+            setData('attributes', [
+                ...data.attributes,
+                { attribute_id: attributeId, value: '' }
+            ]);
+        }
+    };
+
+    const removeAttribute = (attributeId: number) => {
+        setSelectedAttributes(selectedAttributes.filter(id => id !== attributeId));
+        setData('attributes', data.attributes.filter(a => a.attribute_id !== attributeId));
+    };
+
+    const updateAttribute = (attributeId: number, value: string) => {
+        setData('attributes', data.attributes.map(a =>
+            a.attribute_id === attributeId ? { ...a, value } : a
+        ));
+    };
+
+    const toggleModel = (modelId: number) => {
+        const newModels = selectedModels.includes(modelId)
+            ? selectedModels.filter(id => id !== modelId)
+            : [...selectedModels, modelId];
+
+        setSelectedModels(newModels);
+        setData('compatible_models', newModels);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         post(`/admin/products/${product.id}`, {
-            forceFormData: true,
-            _method: 'patch'
+            onSuccess: () => {
+                router.visit('/admin/products');
+            },
         });
     };
 
-    // Get primary image for display
-    const primaryExistingImage = existingImages.find(img => img.is_primary);
-    const hasPrimaryImage = primaryExistingImage || existingImages.length > 0;
+    const tabs = [
+        { id: 'basic', label: 'Basic Info', icon: Package },
+        { id: 'images', label: 'Images', icon: ImageIcon },
+        { id: 'services', label: 'Services', icon: Wrench },
+        { id: 'attributes', label: 'Attributes', icon: Tags },
+        { id: 'compatibility', label: 'Compatibility', icon: Settings },
+    ];
+
+    const StatusBadge = ({ type }: { type: string }) => {
+        const colors = {
+            setup: 'bg-blue-100 text-blue-800',
+            delivery: 'bg-green-100 text-green-800',
+            installation: 'bg-purple-100 text-purple-800',
+            maintenance: 'bg-yellow-100 text-yellow-800',
+            other: 'bg-gray-100 text-gray-800',
+        };
+        return (
+            <span className={`px-2 py-1 text-xs font-medium rounded-full ${colors[type as keyof typeof colors] || colors.other}`}>
+                {type}
+            </span>
+        );
+    };
 
     return (
         <AdminLayout>
@@ -272,849 +369,969 @@ export default function Edit({
             <div className="space-y-8">
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
+                    <div>
+                        <h1 className="text-3xl font-bold text-gray-900">Edit Product</h1>
+                        <p className="text-gray-600 mt-2">Update product information and settings</p>
+                    </div>
+                    <div className="flex items-center gap-3">
                         <button
+                            type="button"
                             onClick={() => router.visit('/admin/products')}
-                            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                            className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
                         >
-                            <ArrowLeft className="w-5 h-5" />
+                            <X className="h-4 w-4" />
+                            Cancel
                         </button>
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Edit Product</h1>
-                            <p className="text-gray-600 mt-2">Update product information</p>
-                        </div>
+                        <button
+                            type="button"
+                            onClick={() => router.visit(`/admin/products/${product.id}`)}
+                            className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                        >
+                            <Eye className="h-4 w-4" />
+                            View
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={processing}
+                            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+                        >
+                            <Save className="h-4 w-4" />
+                            {processing ? 'Updating...' : 'Update Product'}
+                        </button>
                     </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-8">
-                    {/* Basic Information */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Basic Information</h3>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Product Name *</label>
-                                    <input
-                                        type="text"
-                                        value={data.name}
-                                        onChange={(e) => setData('name', e.target.value)}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.name ? 'border-red-300' : 'border-gray-300'
-                                            }`}
-                                        placeholder="Enter product name"
-                                    />
-                                    {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">SKU *</label>
-                                    <input
-                                        type="text"
-                                        value={data.sku}
-                                        onChange={(e) => setData('sku', e.target.value)}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.sku ? 'border-red-300' : 'border-gray-300'
-                                            }`}
-                                        placeholder="Enter SKU"
-                                    />
-                                    {errors.sku && <p className="mt-1 text-sm text-red-600">{errors.sku}</p>}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Brand *</label>
-                                    <select
-                                        value={data.brand_id}
-                                        onChange={(e) => setData('brand_id', e.target.value)}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.brand_id ? 'border-red-300' : 'border-gray-300'
-                                            }`}
-                                    >
-                                        <option value="">Select Brand</option>
-                                        {brands.map(brand => (
-                                            <option key={brand.id} value={brand.id}>{brand.name}</option>
-                                        ))}
-                                    </select>
-                                    {errors.brand_id && <p className="mt-1 text-sm text-red-600">{errors.brand_id}</p>}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
-                                    <select
-                                        value={data.category_id}
-                                        onChange={(e) => setData('category_id', e.target.value)}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.category_id ? 'border-red-300' : 'border-gray-300'
-                                            }`}
-                                    >
-                                        <option value="">Select Category</option>
-                                        {categories.map(category => (
-                                            <option key={category.id} value={category.id}>{category.name}</option>
-                                        ))}
-                                    </select>
-                                    {errors.category_id && <p className="mt-1 text-sm text-red-600">{errors.category_id}</p>}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Manufacturer Part Number</label>
-                                    <input
-                                        type="text"
-                                        value={data.manufacturer_part_number}
-                                        onChange={(e) => setData('manufacturer_part_number', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Enter part number"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">GC Number</label>
-                                    <input
-                                        type="text"
-                                        value={data.gc_number}
-                                        onChange={(e) => setData('gc_number', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Enter GC number"
-                                    />
-                                </div>
-                            </div>
-
+                {/* Error Alert */}
+                {Object.keys(errors).length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Short Description</label>
-                                <textarea
-                                    value={data.short_description}
-                                    onChange={(e) => setData('short_description', e.target.value)}
-                                    rows={3}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Brief product description"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                                <textarea
-                                    value={data.description}
-                                    onChange={(e) => setData('description', e.target.value)}
-                                    rows={6}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Detailed product description"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Product Images */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Product Images</h3>
-                            <p className="text-sm text-gray-600 mt-1">Upload up to 10 images total. Click on an image to set as primary.</p>
-                        </div>
-                        <div className="p-6">
-                            {/* Existing Images */}
-                            {existingImages.length > 0 && (
-                                <div className="mb-6">
-                                    <h4 className="text-md font-medium text-gray-900 mb-3">Current Images</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                        {existingImages.map((image) => (
-                                            <div key={image.id} className="relative group">
-                                                <div className={`relative border-2 rounded-lg overflow-hidden ${image.is_primary ? 'border-blue-500' : 'border-gray-200'
-                                                    }`}>
-                                                    <img
-                                                        src={`/storage/${image.image_path}`}
-                                                        alt={image.alt_text || `Product image ${image.sort_order}`}
-                                                        className="w-full h-24 object-cover"
-                                                    />
-                                                    {image.is_primary && (
-                                                        <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
-                                                            Primary
-                                                        </div>
-                                                    )}
-                                                    <div className="absolute top-2 right-2 flex gap-1">
-                                                        {!image.is_primary && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setPrimaryExistingImage(image.id)}
-                                                                className="bg-white/90 hover:bg-white text-gray-700 p-1 rounded text-xs transition-colors"
-                                                                title="Set as primary"
-                                                            >
-                                                                <ImageIcon className="w-3 h-3" />
-                                                            </button>
-                                                        )}
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeExistingImage(image.id)}
-                                                            className="bg-red-500 hover:bg-red-600 text-white p-1 rounded transition-colors"
-                                                            title="Remove image"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Alt text"
-                                                    value={image.alt_text || ''}
-                                                    className="w-full mt-2 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                                    onChange={(e) => updateExistingImageAlt(image.id, e.target.value)}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Upload New Images */}
-                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                                <input
-                                    type="file"
-                                    multiple
-                                    accept="image/*"
-                                    onChange={handleImageUpload}
-                                    className="hidden"
-                                    id="image-upload"
-                                />
-                                <label
-                                    htmlFor="image-upload"
-                                    className="cursor-pointer flex flex-col items-center justify-center gap-4"
-                                >
-                                    <Upload className="w-12 h-12 text-gray-400" />
-                                    <div className="text-center">
-                                        <p className="text-lg font-medium text-gray-900">Drop new images here or click to upload</p>
-                                        <p className="text-sm text-gray-600">PNG, JPG, GIF up to 2MB each</p>
-                                    </div>
-                                </label>
-                            </div>
-
-                            {/* New Image Previews */}
-                            {imagePreviews.length > 0 && (
-                                <div className="mt-6">
-                                    <h4 className="text-md font-medium text-gray-900 mb-3">New Images</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                        {imagePreviews.map((preview, index) => (
-                                            <div key={index} className="relative group">
-                                                <div className="relative border-2 border-gray-200 rounded-lg overflow-hidden">
-                                                    <img
-                                                        src={preview}
-                                                        alt={`New preview ${index + 1}`}
-                                                        className="w-full h-24 object-cover"
-                                                    />
-                                                    <div className="absolute top-2 right-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeNewImage(index)}
-                                                            className="bg-red-500 hover:bg-red-600 text-white p-1 rounded transition-colors"
-                                                            title="Remove image"
-                                                        >
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <input
-                                                    type="text"
-                                                    placeholder="Alt text"
-                                                    className="w-full mt-2 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                                    onChange={(e) => {
-                                                        const newAlts = [...data.new_image_alts];
-                                                        newAlts[index] = e.target.value;
-                                                        setData('new_image_alts', newAlts);
-                                                    }}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Pricing & Inventory */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Pricing & Inventory</h3>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Regular Price *</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.price}
-                                        onChange={(e) => setData('price', e.target.value)}
-                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.price ? 'border-red-300' : 'border-gray-300'
-                                            }`}
-                                        placeholder="0.00"
-                                    />
-                                    {errors.price && <p className="mt-1 text-sm text-red-600">{errors.price}</p>}
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Sale Price</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.sale_price}
-                                        onChange={(e) => setData('sale_price', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Cost Price</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.cost_price}
-                                        onChange={(e) => setData('cost_price', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Stock Quantity</label>
-                                    <input
-                                        type="number"
-                                        value={data.stock_quantity}
-                                        onChange={(e) => setData('stock_quantity', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Low Stock Threshold</label>
-                                    <input
-                                        type="number"
-                                        value={data.low_stock_threshold}
-                                        onChange={(e) => setData('low_stock_threshold', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="5"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                                    <select
-                                        value={data.status}
-                                        onChange={(e) => setData('status', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    >
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                        <option value="draft">Draft</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-6">
-                                <label className="flex items-center gap-3">
-                                    <input
-                                        type="checkbox"
-                                        checked={data.manage_stock}
-                                        onChange={(e) => setData('manage_stock', e.target.checked)}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm font-medium text-gray-700">Manage Stock</span>
-                                </label>
-
-                                <label className="flex items-center gap-3">
-                                    <input
-                                        type="checkbox"
-                                        checked={data.is_featured}
-                                        onChange={(e) => setData('is_featured', e.target.checked)}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm font-medium text-gray-700">Featured Product</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Physical Dimensions */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Physical Dimensions</h3>
-                            <p className="text-sm text-gray-600 mt-1">Product dimensions for shipping calculations</p>
-                        </div>
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Weight (kg)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.weight}
-                                        onChange={(e) => setData('weight', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Length (cm)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.length}
-                                        onChange={(e) => setData('length', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Width (cm)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.width}
-                                        onChange={(e) => setData('width', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Height (cm)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        value={data.height}
-                                        onChange={(e) => setData('height', e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Product Attributes */}
-                    {attributes && attributes.length > 0 && (
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                            <div className="px-6 py-4 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900">Product Attributes</h3>
-                                <p className="text-sm text-gray-600 mt-1">Additional product specifications</p>
-                            </div>
-                            <div className="p-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {attributes.map(attribute => (
-                                        <div key={attribute.id}>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                {attribute.name}
-                                                {attribute.is_required && <span className="text-red-500 ml-1">*</span>}
-                                            </label>
-
-                                            {/* Text Input */}
-                                            {attribute.type === 'text' && (
-                                                <input
-                                                    type="text"
-                                                    value={data.attributes[attribute.id] || ''}
-                                                    onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-                                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${attribute.is_required && !data.attributes[attribute.id]
-                                                            ? 'border-red-300'
-                                                            : 'border-gray-300'
-                                                        }`}
-                                                    placeholder={`Enter ${attribute.name.toLowerCase()}`}
-                                                    required={attribute.is_required}
-                                                />
-                                            )}
-
-                                            {/* Number Input */}
-                                            {attribute.type === 'number' && (
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    value={data.attributes[attribute.id] || ''}
-                                                    onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-                                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${attribute.is_required && !data.attributes[attribute.id]
-                                                            ? 'border-red-300'
-                                                            : 'border-gray-300'
-                                                        }`}
-                                                    placeholder={`Enter ${attribute.name.toLowerCase()}`}
-                                                    required={attribute.is_required}
-                                                />
-                                            )}
-
-                                            {/* Select Dropdown */}
-                                            {attribute.type === 'select' && (
-                                                <select
-                                                    value={data.attributes[attribute.id] || ''}
-                                                    onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-                                                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${attribute.is_required && !data.attributes[attribute.id]
-                                                            ? 'border-red-300'
-                                                            : 'border-gray-300'
-                                                        }`}
-                                                    required={attribute.is_required}
-                                                >
-                                                    <option value="">Select {attribute.name}</option>
-                                                    {attribute.options?.map(option => (
-                                                        <option key={option} value={option}>{option}</option>
-                                                    ))}
-                                                </select>
-                                            )}
-
-                                            {/* Multi-Select with Checkboxes */}
-                                            {attribute.type === 'multiselect' && (
-                                                <div className={`border rounded-lg p-3 max-h-40 overflow-y-auto ${attribute.is_required && !data.attributes[attribute.id]
-                                                        ? 'border-red-300'
-                                                        : 'border-gray-300'
-                                                    }`}>
-                                                    {attribute.options?.map(option => {
-                                                        const selectedOptions = data.attributes[attribute.id]
-                                                            ? data.attributes[attribute.id].split(',')
-                                                            : [];
-                                                        const isSelected = selectedOptions.includes(option);
-
-                                                        return (
-                                                            <label key={option} className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={isSelected}
-                                                                    onChange={(e) => {
-                                                                        let newOptions = [...selectedOptions];
-                                                                        if (e.target.checked) {
-                                                                            newOptions.push(option);
-                                                                        } else {
-                                                                            newOptions = newOptions.filter(o => o !== option);
-                                                                        }
-                                                                        handleAttributeChange(attribute.id, newOptions.join(','));
-                                                                    }}
-                                                                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 mr-3"
-                                                                />
-                                                                <span className="text-sm text-gray-700">{option}</span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                    {(!attribute.options || attribute.options.length === 0) && (
-                                                        <p className="text-sm text-gray-500 p-2">No options available</p>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Boolean Checkbox */}
-                                            {attribute.type === 'boolean' && (
-                                                <div className="flex items-center gap-3 mt-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={data.attributes[attribute.id] === 'true'}
-                                                        onChange={(e) => handleAttributeChange(attribute.id, e.target.checked ? 'true' : 'false')}
-                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    />
-                                                    <span className="text-sm text-gray-600">
-                                                        Yes, this product has {attribute.name.toLowerCase()}
-                                                    </span>
-                                                </div>
-                                            )}
-
-                                            {/* Validation Error Display */}
-                                            {attribute.is_required && !data.attributes[attribute.id] && (
-                                                <p className="mt-1 text-sm text-red-600">
-                                                    {attribute.name} is required
-                                                </p>
-                                            )}
-                                        </div>
+                                <h3 className="font-semibold text-red-800">Please fix the following errors:</h3>
+                                <ul className="mt-2 text-sm text-red-700 list-disc list-inside">
+                                    {Object.entries(errors).map(([key, message]) => (
+                                        <li key={key}>{message}</li>
                                     ))}
-                                </div>
+                                </ul>
                             </div>
                         </div>
-                    )}
+                    </div>
+                )}
 
-                    {/* Compatible Models */}
-                    {compatible_models && compatible_models.length > 0 && (
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                            <div className="px-6 py-4 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900">Compatible Boiler Models</h3>
-                                <p className="text-sm text-gray-600 mt-1">Select which boiler models this part is compatible with</p>
-                            </div>
-                            <div className="p-6">
-                                <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
-                                    {compatible_models.map(model => (
-                                        <div key={model.id} className="flex items-center p-3 border-b border-gray-100 last:border-b-0">
-                                            <input
-                                                type="checkbox"
-                                                id={`model-${model.id}`}
-                                                checked={data.compatible_models.includes(model.id)}
-                                                onChange={() => handleCompatibleModelToggle(model.id)}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <label htmlFor={`model-${model.id}`} className="ml-3 flex-1 cursor-pointer">
-                                                <div className="font-medium text-gray-900">{model.brand_name} - {model.model_name}</div>
-                                                {model.model_code && (
-                                                    <div className="text-sm text-gray-500">Code: {model.model_code}</div>
-                                                )}
-                                            </label>
-                                        </div>
-                                    ))}
-                                </div>
-                                {data.compatible_models.length > 0 && (
-                                    <div className="mt-3 text-sm text-blue-600">
-                                        {data.compatible_models.length} model(s) selected
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                {/* Tabs Navigation */}
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+                    <div className="border-b border-gray-200">
+                        <nav className="flex space-x-8 px-6">
+                            {tabs.map((tab) => {
+                                const Icon = tab.icon;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors ${activeTab === tab.id
+                                                ? 'border-blue-500 text-blue-600'
+                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            }`}
+                                    >
+                                        <Icon className="h-4 w-4" />
+                                        {tab.label}
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    </div>
 
-                    {/* Product Services */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-900">Product Services</h3>
-                                <p className="text-sm text-gray-600 mt-1">Configure additional services for this product</p>
-                            </div>
-                        </div>
-                        <div className="p-6">
-                            {/* Available Services Selection */}
-                            <div className="mb-6">
-                                <h4 className="text-md font-medium text-gray-900 mb-4">Available Services</h4>
-                                <div className="space-y-3">
-                                    {services.map(service => {
-                                        const isAssigned = data.services.some(s => s.service_id === service.id);
-                                        return (
-                                            <div key={service.id} className={`border rounded-lg p-4 transition-all ${isAssigned ? 'border-blue-200 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                                                }`}>
-                                                <div className="flex items-start justify-between">
-                                                    <div className="flex items-start gap-3 flex-1">
+                    <form onSubmit={handleSubmit} className="p-6">
+                        {/* Basic Info Tab */}
+                        {activeTab === 'basic' && (
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    <div className="lg:col-span-2 space-y-8">
+                                        {/* Product Information */}
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Information</h3>
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Product Name *
+                                                        </label>
                                                         <input
-                                                            type="checkbox"
-                                                            checked={isAssigned}
-                                                            onChange={(e) => {
-                                                                if (e.target.checked) {
-                                                                    // Add service
-                                                                    setData('services', [
-                                                                        ...data.services,
-                                                                        {
-                                                                            service_id: service.id,
-                                                                            custom_price: '',
-                                                                            is_mandatory: !service.is_optional,
-                                                                            is_free: service.is_free
-                                                                        }
-                                                                    ]);
-                                                                } else {
-                                                                    // Remove service
-                                                                    setData('services', data.services.filter(s => s.service_id !== service.id));
-                                                                }
-                                                            }}
-                                                            className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                            type="text"
+                                                            value={data.name}
+                                                            onChange={(e) => handleNameChange(e.target.value)}
+                                                            placeholder="Enter product name"
+                                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.name ? 'border-red-300' : 'border-gray-300'
+                                                                }`}
                                                         />
-                                                        <div className="flex-1">
+                                                        {errors.name && (
+                                                            <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                                {errors.name}
+                                                            </p>
+                                                        )}
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            URL Slug
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={data.slug}
+                                                            onChange={(e) => setData('slug', e.target.value)}
+                                                            placeholder="product-url-slug"
+                                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.slug ? 'border-red-300' : 'border-gray-300'
+                                                                }`}
+                                                        />
+                                                        {errors.slug && (
+                                                            <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                                {errors.slug}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Short Description
+                                                    </label>
+                                                    <textarea
+                                                        value={data.short_description}
+                                                        onChange={(e) => setData('short_description', e.target.value)}
+                                                        placeholder="Brief product description"
+                                                        rows={3}
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Full Description
+                                                    </label>
+                                                    <textarea
+                                                        value={data.description}
+                                                        onChange={(e) => setData('description', e.target.value)}
+                                                        placeholder="Detailed product description"
+                                                        rows={6}
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Product Codes */}
+                                        <div className="border-t border-gray-200 pt-8">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Codes & Numbers</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        SKU *
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.sku}
+                                                        onChange={(e) => setData('sku', e.target.value)}
+                                                        placeholder="Product SKU"
+                                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.sku ? 'border-red-300' : 'border-gray-300'
+                                                            }`}
+                                                    />
+                                                    {errors.sku && (
+                                                        <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            {errors.sku}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Manufacturer Part Number
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.manufacturer_part_number}
+                                                        onChange={(e) => setData('manufacturer_part_number', e.target.value)}
+                                                        placeholder="Manufacturer part number"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        GC Number
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.gc_number}
+                                                        onChange={(e) => setData('gc_number', e.target.value)}
+                                                        placeholder="GC reference number"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Pricing & Inventory */}
+                                        <div className="border-t border-gray-200 pt-8">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Pricing & Inventory</h3>
+                                            <div className="space-y-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Price (£) *
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.price}
+                                                            onChange={(e) => setData('price', e.target.value)}
+                                                            placeholder="0.00"
+                                                            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.price ? 'border-red-300' : 'border-gray-300'
+                                                                }`}
+                                                        />
+                                                        {errors.price && (
+                                                            <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                                <AlertTriangle className="h-4 w-4" />
+                                                                {errors.price}
+                                                            </p>
+                                                        )}
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Sale Price (£)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.sale_price}
+                                                            onChange={(e) => setData('sale_price', e.target.value)}
+                                                            placeholder="0.00"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Cost Price (£)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.cost_price}
+                                                            onChange={(e) => setData('cost_price', e.target.value)}
+                                                            placeholder="0.00"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Stock Quantity *
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={data.stock_quantity}
+                                                            onChange={(e) => setData('stock_quantity', e.target.value)}
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Low Stock Threshold *
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={data.low_stock_threshold}
+                                                            onChange={(e) => setData('low_stock_threshold', e.target.value)}
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        id="manage_stock"
+                                                        type="checkbox"
+                                                        checked={data.manage_stock}
+                                                        onChange={(e) => setData('manage_stock', e.target.checked)}
+                                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                    />
+                                                    <label htmlFor="manage_stock" className="text-sm font-medium text-gray-700">
+                                                        Manage stock quantity for this product
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Sidebar */}
+                                    <div className="space-y-8">
+                                        {/* Organization */}
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Organization</h3>
+                                            <div className="space-y-6">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Brand *
+                                                    </label>
+                                                    <select
+                                                        value={data.brand_id}
+                                                        onChange={(e) => setData('brand_id', e.target.value)}
+                                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.brand_id ? 'border-red-300' : 'border-gray-300'
+                                                            }`}
+                                                    >
+                                                        <option value="">Select brand</option>
+                                                        {brands.map((brand) => (
+                                                            <option key={brand.id} value={brand.id}>
+                                                                {brand.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {errors.brand_id && (
+                                                        <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            {errors.brand_id}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Category *
+                                                    </label>
+                                                    <select
+                                                        value={data.category_id}
+                                                        onChange={(e) => setData('category_id', e.target.value)}
+                                                        className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors ${errors.category_id ? 'border-red-300' : 'border-gray-300'
+                                                            }`}
+                                                    >
+                                                        <option value="">Select category</option>
+                                                        {categories.map((category) => (
+                                                            <option key={category.id} value={category.id}>
+                                                                {category.name}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    {errors.category_id && (
+                                                        <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            {errors.category_id}
+                                                        </p>
+                                                    )}
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Status
+                                                    </label>
+                                                    <select
+                                                        value={data.status}
+                                                        onChange={(e) => setData('status', e.target.value as 'active' | 'inactive' | 'draft')}
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    >
+                                                        <option value="active">Active</option>
+                                                        <option value="inactive">Inactive</option>
+                                                        <option value="draft">Draft</option>
+                                                    </select>
+                                                </div>
+
+                                                <div className="flex items-center gap-3">
+                                                    <input
+                                                        id="is_featured"
+                                                        type="checkbox"
+                                                        checked={data.is_featured}
+                                                        onChange={(e) => setData('is_featured', e.target.checked)}
+                                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                    />
+                                                    <label htmlFor="is_featured" className="text-sm font-medium text-gray-700">
+                                                        Featured product
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Physical Dimensions */}
+                                        <div className="border-t border-gray-200 pt-6">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Physical Dimensions</h3>
+                                            <div className="space-y-4">
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Length (cm)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            value={data.length}
+                                                            onChange={(e) => setData('length', e.target.value)}
+                                                            placeholder="0.0"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Width (cm)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            value={data.width}
+                                                            onChange={(e) => setData('width', e.target.value)}
+                                                            placeholder="0.0"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Height (cm)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            value={data.height}
+                                                            onChange={(e) => setData('height', e.target.value)}
+                                                            placeholder="0.0"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                            Weight (kg)
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            value={data.weight}
+                                                            onChange={(e) => setData('weight', e.target.value)}
+                                                            placeholder="0.0"
+                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* SEO Settings */}
+                                        <div className="border-t border-gray-200 pt-6">
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-4">SEO Settings</h3>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Meta Title
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={data.meta_title}
+                                                        onChange={(e) => setData('meta_title', e.target.value)}
+                                                        placeholder="SEO title"
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                        Meta Description
+                                                    </label>
+                                                    <textarea
+                                                        value={data.meta_description}
+                                                        onChange={(e) => setData('meta_description', e.target.value)}
+                                                        placeholder="SEO description"
+                                                        rows={3}
+                                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Images Tab */}
+                        {activeTab === 'images' && (
+                            <div className="space-y-8">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Images</h3>
+                                    <p className="text-gray-600 mb-6">Manage product images. Click on an image to set as primary.</p>
+
+                                    {/* Existing Images */}
+                                    {existingImages.length > 0 && (
+                                        <div className="mb-8">
+                                            <h4 className="font-semibold text-gray-900 mb-4">Current Images</h4>
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                                                {existingImages.map((image) => (
+                                                    <div key={image.id} className="relative group">
+                                                        <img
+                                                            src={`/storage/${image.image_path}`}
+                                                            alt={image.alt_text || 'Product image'}
+                                                            className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                                                        />
+                                                        {image.is_primary && (
+                                                            <span className="absolute top-2 left-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                Primary
+                                                            </span>
+                                                        )}
+                                                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <div className="flex gap-1">
+                                                                {!image.is_primary && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setPrimaryImage(image.id)}
+                                                                        className="bg-blue-600 text-white p-1.5 rounded-md hover:bg-blue-700 transition-colors"
+                                                                        title="Set as primary"
+                                                                    >
+                                                                        <Star className="h-3 w-3" />
+                                                                    </button>
+                                                                )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => removeExistingImage(image.id)}
+                                                                    className="bg-red-600 text-white p-1.5 rounded-md hover:bg-red-700 transition-colors"
+                                                                    title="Remove image"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Upload New Images */}
+                                    <div>
+                                        <h4 className="font-semibold text-gray-900 mb-4">Add New Images</h4>
+                                        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-gray-400 transition-colors">
+                                            <input
+                                                type="file"
+                                                multiple
+                                                accept="image/*"
+                                                onChange={handleImageChange}
+                                                className="hidden"
+                                                id="image-upload"
+                                            />
+                                            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                                            <h4 className="text-lg font-medium text-gray-900 mb-2">Upload Images</h4>
+                                            <p className="text-gray-600 mb-4">PNG, JPG, JPEG, WEBP up to 2MB each</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => document.getElementById('image-upload')?.click()}
+                                                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                            >
+                                                Choose Files
+                                            </button>
+                                        </div>
+
+                                        {imagePreview.length > 0 && (
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6">
+                                                <h5 className="col-span-full font-medium text-gray-900">New Images Preview:</h5>
+                                                {imagePreview.map((preview, index) => (
+                                                    <div key={index} className="relative">
+                                                        <img
+                                                            src={preview}
+                                                            alt={`Preview ${index + 1}`}
+                                                            className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                                                        />
+                                                        <span className="absolute top-2 left-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                            New
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Services Tab */}
+                        {activeTab === 'services' && (
+                            <div className="space-y-8">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Services</h3>
+                                    <p className="text-gray-600 mb-6">Manage services for this product</p>
+
+                                    <div className="space-y-6">
+                                        <div>
+                                            <h4 className="font-semibold text-gray-900 mb-4">Available Services</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {services.filter(service => !selectedServices.includes(service.id)).map((service) => (
+                                                    <div
+                                                        key={service.id}
+                                                        className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                                                        onClick={() => addService(service.id)}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h5 className="font-medium text-gray-900">{service.name}</h5>
+                                                            <StatusBadge type={service.type} />
+                                                        </div>
+                                                        <p className="text-sm text-gray-600 mb-3">{service.description}</p>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-semibold text-gray-900">£{service.price}</span>
                                                             <div className="flex items-center gap-2">
-                                                                <h5 className="font-medium text-gray-900">{service.name}</h5>
-                                                                <span className="text-sm px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                                                                    {service.type}
-                                                                </span>
                                                                 {service.is_free && (
-                                                                    <span className="text-sm px-2 py-1 rounded-full bg-green-100 text-green-700">
+                                                                    <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium">
                                                                         Free
                                                                     </span>
                                                                 )}
                                                                 {!service.is_optional && (
-                                                                    <span className="text-sm px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                                                                    <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-medium">
                                                                         Required
                                                                     </span>
                                                                 )}
                                                             </div>
-                                                            <p className="text-sm text-gray-600 mt-1">
-                                                                Default Price: £{service.price}
-                                                            </p>
                                                         </div>
                                                     </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {data.services.length > 0 && (
+                                            <div>
+                                                <h4 className="font-semibold text-gray-900 mb-4">Assigned Services</h4>
+                                                <div className="space-y-4">
+                                                    {data.services.map((serviceData) => {
+                                                        const service = services.find(s => s.id === serviceData.service_id);
+                                                        if (!service) return null;
+
+                                                        return (
+                                                            <div key={service.id} className="border border-gray-200 rounded-lg p-4">
+                                                                <div className="flex items-center justify-between mb-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <h5 className="font-medium text-gray-900">{service.name}</h5>
+                                                                        <StatusBadge type={service.type} />
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeService(service.id)}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors"
+                                                                    >
+                                                                        <X className="h-4 w-4" />
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                            Custom Price (£)
+                                                                        </label>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            min="0"
+                                                                            value={serviceData.custom_price || service.price}
+                                                                            onChange={(e) => updateService(service.id, 'custom_price', parseFloat(e.target.value))}
+                                                                            placeholder={service.price.toString()}
+                                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                                        />
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                            Service Options
+                                                                        </label>
+                                                                        <div className="space-y-3">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <input
+                                                                                    id={`mandatory-${service.id}`}
+                                                                                    type="checkbox"
+                                                                                    checked={serviceData.is_mandatory}
+                                                                                    onChange={(e) => updateService(service.id, 'is_mandatory', e.target.checked)}
+                                                                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                                                />
+                                                                                <label htmlFor={`mandatory-${service.id}`} className="text-sm text-gray-700">
+                                                                                    Mandatory for this product
+                                                                                </label>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-3">
+                                                                                <input
+                                                                                    id={`free-${service.id}`}
+                                                                                    type="checkbox"
+                                                                                    checked={serviceData.is_free}
+                                                                                    onChange={(e) => updateService(service.id, 'is_free', e.target.checked)}
+                                                                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                                                />
+                                                                                <label htmlFor={`free-${service.id}`} className="text-sm text-gray-700">
+                                                                                    Free for this product
+                                                                                </label>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
-                                                {/* Service Configuration - Show only when assigned */}
-                                                {isAssigned && (
-                                                    <div className="mt-4 pt-4 border-t border-blue-200">
-                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                            <div>
-                                                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                                    Custom Price (£)
-                                                                </label>
+                        {/* Attributes Tab */}
+                        {activeTab === 'attributes' && (
+                            <div className="space-y-8">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Attributes</h3>
+                                    <p className="text-gray-600 mb-6">Manage custom attributes for this product</p>
+
+                                    <div className="space-y-6">
+                                        <div>
+                                            <h4 className="font-semibold text-gray-900 mb-4">Available Attributes</h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {attributes.filter(attr => !selectedAttributes.includes(attr.id)).map((attribute) => (
+                                                    <div
+                                                        key={attribute.id}
+                                                        className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                                                        onClick={() => addAttribute(attribute.id)}
+                                                    >
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <h5 className="font-medium text-gray-900">{attribute.name}</h5>
+                                                            <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                {attribute.type}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {attribute.is_required && (
+                                                                <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                    Required
+                                                                </span>
+                                                            )}
+                                                            {attribute.is_filterable && (
+                                                                <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                    Filterable
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {data.attributes.length > 0 && (
+                                            <div>
+                                                <h4 className="font-semibold text-gray-900 mb-4">Assigned Attributes</h4>
+                                                <div className="space-y-4">
+                                                    {data.attributes.map((attrData) => {
+                                                        const attribute = attributes.find(a => a.id === attrData.attribute_id);
+                                                        if (!attribute) return null;
+
+                                                        return (
+                                                            <div key={attribute.id} className="border border-gray-200 rounded-lg p-4">
+                                                                <div className="flex items-center justify-between mb-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <h5 className="font-medium text-gray-900">{attribute.name}</h5>
+                                                                        <span className="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                            {attribute.type}
+                                                                        </span>
+                                                                        {attribute.is_required && (
+                                                                            <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-medium">
+                                                                                Required
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeAttribute(attribute.id)}
+                                                                        className="text-gray-400 hover:text-red-500 transition-colors"
+                                                                    >
+                                                                        <X className="h-4 w-4" />
+                                                                    </button>
+                                                                </div>
+
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                        Value
+                                                                    </label>
+                                                                    {attribute.type === 'boolean' ? (
+                                                                        <div className="flex items-center gap-3">
+                                                                            <input
+                                                                                id={`attr-${attribute.id}`}
+                                                                                type="checkbox"
+                                                                                checked={attrData.value === 'true'}
+                                                                                onChange={(e) => updateAttribute(attribute.id, e.target.checked ? 'true' : 'false')}
+                                                                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                                            />
+                                                                            <label htmlFor={`attr-${attribute.id}`} className="text-sm text-gray-700">
+                                                                                Yes
+                                                                            </label>
+                                                                        </div>
+                                                                    ) : attribute.type === 'number' ? (
+                                                                        <input
+                                                                            type="number"
+                                                                            value={attrData.value}
+                                                                            onChange={(e) => updateAttribute(attribute.id, e.target.value)}
+                                                                            placeholder="Enter number value"
+                                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                                        />
+                                                                    ) : (
+                                                                        <input
+                                                                            type="text"
+                                                                            value={attrData.value}
+                                                                            onChange={(e) => updateAttribute(attribute.id, e.target.value)}
+                                                                            placeholder="Enter attribute value"
+                                                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                                                                        />
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Compatibility Tab */}
+                        {activeTab === 'compatibility' && (
+                            <div className="space-y-8">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Boiler Compatibility</h3>
+                                    <p className="text-gray-600 mb-6">Manage compatible boiler models for this part</p>
+
+                                    <div className="space-y-8">
+                                        {Object.entries(
+                                            compatibleModels.reduce((groups, model) => {
+                                                if (!groups[model.brand_name]) {
+                                                    groups[model.brand_name] = [];
+                                                }
+                                                groups[model.brand_name].push(model);
+                                                return groups;
+                                            }, {} as Record<string, CompatibleModel[]>)
+                                        ).map(([brandName, models]) => (
+                                            <div key={brandName}>
+                                                <h4 className="text-lg font-semibold text-gray-900 mb-4">{brandName}</h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                    {models.map((model) => (
+                                                        <div
+                                                            key={model.id}
+                                                            className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedModels.includes(model.id)
+                                                                    ? 'bg-blue-50 border-blue-200'
+                                                                    : 'border-gray-200 hover:bg-gray-50'
+                                                                }`}
+                                                            onClick={() => toggleModel(model.id)}
+                                                        >
+                                                            <div className="flex items-start gap-3">
                                                                 <input
-                                                                    type="number"
-                                                                    step="0.01"
-                                                                    value={data.services.find(s => s.service_id === service.id)?.custom_price || ''}
-                                                                    onChange={(e) => {
-                                                                        const updatedServices = data.services.map(s =>
-                                                                            s.service_id === service.id
-                                                                                ? { ...s, custom_price: e.target.value }
-                                                                                : s
-                                                                        );
-                                                                        setData('services', updatedServices);
-                                                                    }}
-                                                                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                                    placeholder={`Default: £${service.price}`}
+                                                                    type="checkbox"
+                                                                    checked={selectedModels.includes(model.id)}
+                                                                    onChange={() => { }}
+                                                                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mt-0.5"
                                                                 />
-                                                                <p className="text-xs text-gray-500 mt-1">
-                                                                    Leave empty to use default price
-                                                                </p>
-                                                            </div>
-
-                                                            <div className="space-y-3">
-                                                                <label className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={data.services.find(s => s.service_id === service.id)?.is_mandatory || false}
-                                                                        onChange={(e) => {
-                                                                            const updatedServices = data.services.map(s =>
-                                                                                s.service_id === service.id
-                                                                                    ? { ...s, is_mandatory: e.target.checked }
-                                                                                    : s
-                                                                            );
-                                                                            setData('services', updatedServices);
-                                                                        }}
-                                                                        disabled={!service.is_optional}
-                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
-                                                                    />
-                                                                    <span className="text-sm font-medium text-gray-700">
-                                                                        Mandatory for this product
-                                                                    </span>
-                                                                </label>
-
-                                                                <label className="flex items-center gap-2">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={data.services.find(s => s.service_id === service.id)?.is_free || false}
-                                                                        onChange={(e) => {
-                                                                            const updatedServices = data.services.map(s =>
-                                                                                s.service_id === service.id
-                                                                                    ? { ...s, is_free: e.target.checked }
-                                                                                    : s
-                                                                            );
-                                                                            setData('services', updatedServices);
-                                                                        }}
-                                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                                    />
-                                                                    <span className="text-sm font-medium text-gray-700">
-                                                                        Free service for this product
-                                                                    </span>
-                                                                </label>
-                                                            </div>
-
-                                                            <div className="flex items-center">
-                                                                <div className="text-sm">
-                                                                    <p className="font-medium text-gray-900">Final Price:</p>
-                                                                    <p className="text-lg font-bold text-blue-600">
-                                                                        {(() => {
-                                                                            const serviceConfig = data.services.find(s => s.service_id === service.id);
-                                                                            if (serviceConfig?.is_free || service.is_free) return 'Free';
-                                                                            const customPrice = serviceConfig?.custom_price;
-                                                                            const finalPrice = customPrice ? parseFloat(customPrice) : service.price;
-                                                                            return `£${finalPrice.toFixed(2)}`;
-                                                                        })()}
-                                                                    </p>
+                                                                <div className="flex-1">
+                                                                    <p className="font-medium text-sm text-gray-900">{model.model_name}</p>
+                                                                    {model.model_code && (
+                                                                        <p className="text-xs text-gray-600 mt-1">{model.model_code}</p>
+                                                                    )}
+                                                                    {(model.year_from || model.year_to) && (
+                                                                        <p className="text-xs text-gray-500 mt-1">
+                                                                            {model.year_from && model.year_to
+                                                                                ? `${model.year_from} - ${model.year_to}`
+                                                                                : model.year_from
+                                                                                    ? `From ${model.year_from}`
+                                                                                    : `Until ${model.year_to}`}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                )}
+                                                    ))}
+                                                </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Summary */}
-                            {data.services.length > 0 && (
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                    <h4 className="text-md font-medium text-gray-900 mb-2">Service Summary</h4>
-                                    <div className="text-sm text-gray-600">
-                                        <p className="mb-2">
-                                            <span className="font-medium">{data.services.length}</span> service(s) configured
-                                        </p>
-                                        <div className="flex gap-4">
-                                            <span>
-                                                Mandatory: <span className="font-medium text-orange-600">
-                                                    {data.services.filter(s => s.is_mandatory).length}
-                                                </span>
-                                            </span>
-                                            <span>
-                                                Optional: <span className="font-medium text-blue-600">
-                                                    {data.services.filter(s => !s.is_mandatory).length}
-                                                </span>
-                                            </span>
-                                            <span>
-                                                Free: <span className="font-medium text-green-600">
-                                                    {data.services.filter(s => s.is_free).length}
-                                                </span>
-                                            </span>
-                                        </div>
+                                        ))}
                                     </div>
+
+                                    {selectedModels.length > 0 && (
+                                        <div className="mt-8 bg-gray-50 rounded-xl p-6">
+                                            <h4 className="font-semibold text-gray-900 mb-4">
+                                                Selected Models ({selectedModels.length})
+                                            </h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedModels.map(modelId => {
+                                                    const model = compatibleModels.find(m => m.id === modelId);
+                                                    return model ? (
+                                                        <span
+                                                            key={model.id}
+                                                            className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-sm px-3 py-1 rounded-full"
+                                                        >
+                                                            {model.brand_name} {model.model_name}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleModel(model.id)}
+                                                                className="ml-1 hover:bg-blue-200 rounded-full p-0.5 transition-colors"
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </span>
+                                                    ) : null;
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            {data.services.length === 0 && (
-                                <div className="text-center py-8 text-gray-500">
-                                    <p>No services selected. Check services above to add them to this product.</p>
+                        {/* Form Footer */}
+                        <div className="border-t border-gray-200 bg-gray-50 -m-6 mt-8 px-6 py-4 rounded-b-xl">
+                            <div className="flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    onClick={() => router.visit('/admin/products')}
+                                    className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setData('status', 'draft');
+                                            handleSubmit;
+                                        }}
+                                        disabled={processing}
+                                        className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        <Save className="h-4 w-4" />
+                                        Save as Draft
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={processing}
+                                        className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        <Save className="h-4 w-4" />
+                                        {processing ? 'Updating...' : 'Update Product'}
+                                    </button>
                                 </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* SEO Settings */}
-                    <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">SEO Settings</h3>
-                            <p className="text-sm text-gray-600 mt-1">Optimize your product for search engines</p>
-                        </div>
-                        <div className="p-6 space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Meta Title</label>
-                                <input
-                                    type="text"
-                                    value={data.meta_title}
-                                    onChange={(e) => setData('meta_title', e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="SEO optimized title"
-                                    maxLength={60}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">{data.meta_title.length}/60 characters</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Meta Description</label>
-                                <textarea
-                                    value={data.meta_description}
-                                    onChange={(e) => setData('meta_description', e.target.value)}
-                                    rows={3}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="SEO optimized description"
-                                    maxLength={160}
-                                />
-                                <p className="text-xs text-gray-500 mt-1">{data.meta_description.length}/160 characters</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Product Slug</label>
-                                <input
-                                    type="text"
-                                    value={data.slug}
-                                    onChange={(e) => setData('slug', e.target.value)}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    placeholder="Leave empty to auto-generate from product name"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">URL-friendly version of the product name</p>
                             </div>
                         </div>
-                    </div>
-
-                    {/* Form Actions */}
-                    <div className="flex items-center justify-end gap-4 bg-gray-50 px-6 py-4 rounded-xl">
-                        <button
-                            type="button"
-                            onClick={() => router.visit('/admin/products')}
-                            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={processing}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-blue-400 transition-colors flex items-center gap-2"
-                        >
-                            <Save className="w-5 h-5" />
-                            {processing ? 'Updating...' : 'Update Product'}
-                        </button>
-                    </div>
-                </form>
+                    </form>
+                </div>
             </div>
         </AdminLayout>
     );
