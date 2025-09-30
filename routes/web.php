@@ -11,7 +11,6 @@ use App\Http\Controllers\Frontend\CategoryController;
 use App\Http\Controllers\Frontend\BrandController;
 use App\Http\Controllers\Frontend\CartController;
 use App\Http\Controllers\Frontend\CheckoutController;
-use App\Http\Controllers\Frontend\AccountController;
 use App\Http\Controllers\Frontend\WishlistController;
 use App\Http\Controllers\Frontend\ContactController;
 
@@ -144,11 +143,9 @@ Route::prefix('brands')->name('brands.')->group(function () {
 Route::prefix('cart')->name('cart.')->group(function () {
     Route::get('/', [CartController::class, 'index'])->name('index');
     Route::post('/add', [CartController::class, 'add'])->name('add');
-    Route::patch('/update/{id}', [CartController::class, 'update'])->name('update');
-    Route::delete('/remove/{id}', [CartController::class, 'remove'])->name('remove');
+    Route::patch('/update/{cart}', [CartController::class, 'update'])->name('update');
+    Route::delete('/remove/{cart}', [CartController::class, 'remove'])->name('remove');
     Route::delete('/clear', [CartController::class, 'clear'])->name('clear');
-    Route::post('/apply-coupon', [CartController::class, 'applyCoupon'])->name('apply-coupon');
-    Route::delete('/remove-coupon', [CartController::class, 'removeCoupon'])->name('remove-coupon');
 });
 
 // Contact Routes
@@ -198,20 +195,21 @@ Route::middleware('auth')->group(function () {
 
     // Account Routes
     Route::prefix('account')->name('account.')->group(function () {
-        Route::get('/', [AccountController::class, 'dashboard'])->name('dashboard');
-        Route::get('/orders', [AccountController::class, 'orders'])->name('orders');
-        Route::get('/orders/{order}', [AccountController::class, 'orderDetails'])->name('order-details');
-        Route::get('/addresses', [AccountController::class, 'addresses'])->name('addresses');
-        Route::post('/addresses', [AccountController::class, 'storeAddress'])->name('store-address');
-        Route::patch('/addresses/{address}', [AccountController::class, 'updateAddress'])->name('update-address');
-        Route::delete('/addresses/{address}', [AccountController::class, 'deleteAddress'])->name('delete-address');
-        Route::get('/profile', [AccountController::class, 'profile'])->name('profile');
-        Route::patch('/profile', [AccountController::class, 'updateProfile'])->name('update-profile');
+        Route::get('/', [UserProfileController::class, 'index'])->name('dashboard');
+        Route::get('/orders', [UserProfileController::class, 'orders'])->name('orders');
+        Route::get('/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('order-details');
+        Route::get('/addresses', [UserProfileController::class, 'addresses'])->name('addresses');
+        Route::post('/addresses', [UserProfileController::class, 'storeAddress'])->name('store-address');
+        Route::patch('/addresses/{address}', [UserProfileController::class, 'updateAddress'])->name('update-address');
+        Route::delete('/addresses/{address}', [UserProfileController::class, 'deleteAddress'])->name('delete-address');
+        Route::get('/profile', [UserProfileController::class, 'profile'])->name('profile');
+        Route::patch('/profile', [UserProfileController::class, 'updateProfile'])->name('update-profile');
     });
 
 });
 
-Route::middleware('web')->group(function () {
+Route::middleware(['web'])->group(function () {
+    Route::post('api/cart/add', [CartController::class, 'addToCart']);
     Route::get('api/cart/items', [CartController::class, 'getItems']);
 });
 

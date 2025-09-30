@@ -20,12 +20,13 @@ class CheckoutController extends Controller
     /**
      * Show checkout page
      */
-    public function index(): Response
+    public function index(): Response|RedirectResponse
     {
         $cartItems = $this->getCartItems();
 
         if ($cartItems->isEmpty()) {
-            return Inertia::location(route('cart.index'));
+            return redirect()->route('cart.index')
+                ->with('warning', 'Your cart is empty');
         }
 
         $user = Auth::user();

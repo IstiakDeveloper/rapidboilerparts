@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Cart;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Session;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -36,6 +37,80 @@ class CartController extends Controller
             'count' => $cartItems->sum('quantity'),
         ]);
     }
+
+    public function addToCart(Request $request)
+    {
+        $validated = $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $product = Product::with('brand')->findOrFail($validated['product_id']);
+
+        // Check stock
+        if ($product->stock_quantity < $validated['quantity']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient stock available'
+            ], 400);
+        }
+
+        $userId = Auth::id();
+        $sessionId = Session::getId();
+
+        // Find or create cart item
+        $cartItem = Cart::where('product_id', $product->id)
+            ->where(function ($query) use ($userId, $sessionId) {
+                if ($userId) {
+                    $query->where('user_id', $userId);
+                } else {
+                    $query->where('session_id', $sessionId);
+                }
+            })
+            ->first();
+
+        if ($cartItem) {
+            $newQuantity = $cartItem->quantity + $validated['quantity'];
+
+            if ($newQuantity > $product->stock_quantity) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot add more items. Stock limit reached.'
+                ], 400);
+            }
+
+            $cartItem->quantity = $newQuantity;
+            $cartItem->save();
+        } else {
+            $cartItem = Cart::create([
+                'user_id' => $userId,
+                'session_id' => $sessionId,
+                'product_id' => $product->id,
+                'quantity' => $validated['quantity'],
+            ]);
+        }
+
+        // Clear cache
+        Cache::forget("cart_count_{$userId}_{$sessionId}");
+
+        // Get updated cart count
+        $cartCount = Cart::where(function ($query) use ($userId, $sessionId) {
+            if ($userId) {
+                $query->where('user_id', $userId);
+            } else {
+                $query->where('session_id', $sessionId);
+            }
+        })->sum('quantity');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product added to cart successfully',
+            'cartCount' => (int) $cartCount,
+            'cartItem' => $cartItem
+        ]);
+    }
+
+
 
     /**
      * Display cart page
@@ -121,7 +196,6 @@ class CartController extends Controller
             'quantity' => 'required|integer|min:1',
         ]);
 
-        // Verify ownership
         if (!$this->verifyCartOwnership($cart)) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
@@ -136,12 +210,25 @@ class CartController extends Controller
 
         $cart->update(['quantity' => $request->quantity]);
 
+        // Get updated cart count
+        $userId = Auth::id();
+        $sessionId = $this->getSessionId();
+
+        $cartCount = Cart::where(function ($query) use ($userId, $sessionId) {
+            if ($userId) {
+                $query->where('user_id', $userId);
+            } else {
+                $query->where('session_id', $sessionId);
+            }
+        })->sum('quantity');
+
         $cartItems = $this->getCartItems();
         $cartSummary = $this->calculateCartSummary($cartItems);
 
         return response()->json([
             'success' => true,
             'cartSummary' => $cartSummary,
+            'cartCount' => (int) $cartCount, // ← এটা add করো
         ]);
     }
 
@@ -173,19 +260,35 @@ class CartController extends Controller
         ]);
     }
 
-    /**
-     * Remove item from cart
-     */
     public function remove(Cart $cart)
     {
         // Verify ownership
         if (!$this->verifyCartOwnership($cart)) {
-            return back()->with('error', 'Unauthorized action.');
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized action.'
+            ], 403);
         }
 
         $cart->delete();
 
-        return back()->with('success', 'Item removed from cart.');
+        // Get updated cart count
+        $userId = Auth::id();
+        $sessionId = $this->getSessionId();
+
+        $cartCount = Cart::where(function ($query) use ($userId, $sessionId) {
+            if ($userId) {
+                $query->where('user_id', $userId);
+            } else {
+                $query->where('session_id', $sessionId);
+            }
+        })->sum('quantity');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item removed from cart.',
+            'cartCount' => (int) $cartCount
+        ]);
     }
 
     /**

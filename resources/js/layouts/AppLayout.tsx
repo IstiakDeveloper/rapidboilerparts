@@ -53,7 +53,9 @@ interface AppLayoutProps {
 }
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-    const { auth, cartCount = 0, wishlistCount = 0, siteSettings = {}, flash, csrf_token } = usePage<PageProps>().props;
+    const { auth, cartCount: initialCartCount = 0, wishlistCount = 0, siteSettings = {}, flash, csrf_token } = usePage<PageProps>().props;
+
+    const [cartCount, setCartCount] = useState(initialCartCount);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isScrolled, setIsScrolled] = useState(false);
@@ -63,10 +65,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [loadingCart, setLoadingCart] = useState(false);
     const [updatingItem, setUpdatingItem] = useState<number | null>(null);
+    const [deletingItem, setDeletingItem] = useState<number | null>(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
     const [toastMessage, setToastMessage] = useState<{
         type: 'success' | 'error' | 'info' | 'warning',
         message: string
     } | null>(null);
+
+    useEffect(() => {
+        setCartCount(initialCartCount);
+    }, [initialCartCount]);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -88,6 +96,30 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         }
     }, [flash]);
 
+    useEffect(() => {
+        const handleCartUpdate = (e: CustomEvent) => {
+            if (e.detail?.cartCount !== undefined) {
+                setCartCount(e.detail.cartCount);
+                if (cartSidebarOpen) {
+                    loadCartItems();
+                }
+            }
+        };
+
+        window.addEventListener('cartUpdated', handleCartUpdate as EventListener);
+        return () => window.removeEventListener('cartUpdated', handleCartUpdate as EventListener);
+    }, [cartSidebarOpen]);
+
+    useEffect(() => {
+        const handleShowToast = (e: CustomEvent) => {
+            setToastMessage({ type: e.detail.type, message: e.detail.message });
+            setTimeout(() => setToastMessage(null), 4000);
+        };
+
+        window.addEventListener('showToast', handleShowToast as EventListener);
+        return () => window.removeEventListener('showToast', handleShowToast as EventListener);
+    }, []);
+
     const showToast = (type: 'success' | 'error' | 'info' | 'warning', message: string) => {
         setToastMessage({ type, message });
         setTimeout(() => setToastMessage(null), 4000);
@@ -104,8 +136,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     };
 
     const loadCartItems = async () => {
-        if (cartItems.length > 0 && cartItems.length === cartCount) return;
-
         setLoadingCart(true);
         try {
             const response = await fetch('/api/cart/items', {
@@ -118,6 +148,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             if (response.ok) {
                 const data = await response.json();
                 setCartItems(data.items || []);
+                setCartCount(data.count || 0); // ← এই line add করো
             }
         } catch (error) {
             console.error('Failed to load cart items:', error);
@@ -159,15 +190,30 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             });
 
             if (response.ok) {
+                const data = await response.json();
+
                 setCartItems(prev => prev.map(item =>
                     item.id === itemId ? { ...item, quantity: newQuantity } : item
                 ));
-                router.reload({ only: ['cartCount'] });
+
+                if (data.cartCount !== undefined) {
+                    setCartCount(data.cartCount);
+                }
+
+                // ← এই line add করো - immediately refresh count from API
+                await loadCartItems();
+
+                window.dispatchEvent(new CustomEvent('cartUpdated', {
+                    detail: { cartCount: data.cartCount }
+                }));
+
+                showToast('success', 'Quantity updated');
             } else {
                 const data = await response.json();
                 showToast('error', data.error || 'Failed to update quantity');
             }
         } catch (error) {
+            console.error('Update quantity error:', error);
             showToast('error', 'Failed to update quantity');
         } finally {
             setUpdatingItem(null);
@@ -175,25 +221,50 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     };
 
     const removeCartItem = async (itemId: number) => {
-        if (!confirm('Remove this item from cart?')) return;
-
+        setShowDeleteConfirm(null);
+        setDeletingItem(itemId);
         try {
-            const response = await fetch(`/cart/${itemId}`, {
+            const response = await fetch(`/cart/remove/${itemId}`, {
                 method: 'DELETE',
                 headers: {
                     'X-CSRF-TOKEN': csrf_token,
                     'Accept': 'application/json',
+                    'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
+                credentials: 'same-origin',
             });
 
-            if (response.ok) {
+            if (!response.ok) {
+                console.error('Response status:', response.status);
+                const text = await response.text();
+                console.error('Response body:', text);
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
                 setCartItems(prev => prev.filter(item => item.id !== itemId));
-                router.reload({ only: ['cartCount'] });
-                showToast('success', 'Item removed from cart');
+                if (data.cartCount !== undefined) {
+                    setCartCount(data.cartCount);
+                }
+
+                // ← এই line add করো - immediately refresh
+                await loadCartItems();
+
+                window.dispatchEvent(new CustomEvent('cartUpdated', {
+                    detail: { cartCount: data.cartCount }
+                }));
+                showToast('success', data.message || 'Item removed from cart');
+            } else {
+                showToast('error', data.message || 'Failed to remove item');
             }
         } catch (error) {
-            showToast('error', 'Failed to remove item');
+            console.error('Remove item error:', error);
+            showToast('error', 'Network error. Please try again.');
+        } finally {
+            setDeletingItem(null);
         }
     };
 
@@ -229,15 +300,46 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             {toastMessage && (
                 <div className="fixed top-20 right-4 z-[60] animate-slide-in-right">
                     <div className={`rounded-lg shadow-lg px-4 py-3 flex items-center space-x-3 min-w-[300px] ${toastMessage.type === 'success' ? 'bg-green-600' :
-                            toastMessage.type === 'error' ? 'bg-red-600' :
-                                toastMessage.type === 'warning' ? 'bg-orange-600' :
-                                    'bg-blue-600'
+                        toastMessage.type === 'error' ? 'bg-red-600' :
+                            toastMessage.type === 'warning' ? 'bg-orange-600' :
+                                'bg-blue-600'
                         } text-white`}>
                         <ToastIcon type={toastMessage.type} />
                         <span className="text-sm font-medium flex-1">{toastMessage.message}</span>
                         <button onClick={() => setToastMessage(null)} className="hover:opacity-75">
                             <X size={16} />
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm !== null && (
+                <div className="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                        <div className="flex items-center space-x-3 mb-4">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                                <AlertCircle className="text-red-600" size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-semibold text-gray-900">Remove Item</h3>
+                                <p className="text-sm text-gray-600">Are you sure you want to remove this item from your cart?</p>
+                            </div>
+                        </div>
+                        <div className="flex space-x-3">
+                            <button
+                                onClick={() => setShowDeleteConfirm(null)}
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => removeCartItem(showDeleteConfirm)}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors font-medium"
+                            >
+                                Remove
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -251,9 +353,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             </div>
 
             {/* Header */}
-            <header className={`sticky top-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/95 backdrop-blur-lg shadow-lg' : 'bg-white shadow-sm'
-                }`}>
-                {/* Top Bar */}
+            <header className={`sticky top-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/95 backdrop-blur-lg shadow-lg' : 'bg-white shadow-sm'}`}>
+                {/* Top Bar - keeping existing code */}
                 <div className="border-b border-gray-100">
                     <div className="max-w-7xl mx-auto px-4 py-2">
                         <div className="flex justify-between items-center">
@@ -351,16 +452,14 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     </div>
                 </div>
 
-                {/* Main Header */}
+                {/* Main Header - keeping existing nav code */}
                 <div className="max-w-7xl mx-auto px-4 py-3">
                     <div className="flex items-center justify-between">
                         <Link href="/" className="flex items-center group">
                             <div className="relative">
                                 <div className="w-12 h-12 bg-gradient-to-r from-red-600 to-red-700 rounded-xl flex items-center justify-center mr-3 transform group-hover:scale-105 transition-transform shadow-lg">
                                     <div className="text-white font-bold text-xs text-center leading-tight">
-                                        <div>RAPID</div>
-                                        <div>BOILER</div>
-                                        <div>PARTS</div>
+                                        <img src="/logo.png" alt="Logo" />
                                     </div>
                                 </div>
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
@@ -486,7 +585,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     </div>
                 </div>
 
-                {/* Mobile Menu */}
+                {/* Mobile Menu - keeping existing code */}
                 {mobileMenuOpen && (
                     <div className="lg:hidden bg-white border-t border-gray-100 shadow-lg">
                         <div className="px-4 py-3 space-y-3">
@@ -621,11 +720,16 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                                         </button>
                                                     </div>
                                                     <button
-                                                        onClick={() => removeCartItem(item.id)}
-                                                        className="text-red-600 hover:text-red-700 p-1 transition-colors"
+                                                        onClick={() => setShowDeleteConfirm(item.id)}
+                                                        disabled={deletingItem === item.id}
+                                                        className="text-red-600 hover:text-red-700 p-1 transition-colors disabled:opacity-50"
                                                         aria-label="Remove item"
                                                     >
-                                                        <Trash2 size={16} />
+                                                        {deletingItem === item.id ? (
+                                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
+                                                        ) : (
+                                                            <Trash2 size={16} />
+                                                        )}
                                                     </button>
                                                 </div>
 
@@ -687,7 +791,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             <main className="min-h-screen">{children}</main>
 
-            {/* Footer */}
+            {/* Footer - keeping existing footer code */}
             <footer className="bg-gradient-to-r from-gray-900 to-gray-800 text-white">
                 <div className="max-w-7xl mx-auto px-4 py-8">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
-import { Search, Phone, Mail, MessageCircle, ShoppingCart, User, Menu, X, Filter, Star, Truck, Shield, Clock, ArrowRight, CheckCircle } from 'lucide-react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Search, Phone, Mail, MessageCircle, ShoppingCart, User, Menu, X, Filter, Star, Truck, Shield, Clock, ArrowRight, CheckCircle, Heart, Loader2 } from 'lucide-react';
 import AppLayout from '@/layouts/AppLayout';
 
 interface Product {
@@ -22,6 +22,7 @@ interface Product {
         slug: string;
     };
     in_stock: boolean;
+    stock_quantity: number;
 }
 
 interface Category {
@@ -38,12 +39,12 @@ interface Brand {
     slug: string;
     logo: string;
     products_count: number;
-    categories: Category[]; // Brand এর available categories
+    categories: Category[];
 }
 
 interface HomeProps {
     categories: Category[];
-    allCategories: Category[]; // সব categories search এর জন্য
+    allCategories: Category[];
     brands: Brand[];
     featuredProducts: Product[];
     latestProducts: Product[];
@@ -52,6 +53,7 @@ interface HomeProps {
         total_brands: number;
         total_categories: number;
     };
+    csrf_token: string;
 }
 
 const Home: React.FC<HomeProps> = ({
@@ -62,20 +64,22 @@ const Home: React.FC<HomeProps> = ({
     latestProducts,
     stats
 }) => {
+    const { csrf_token } = usePage<HomeProps>().props;
     const [selectedBrand, setSelectedBrand] = useState('');
     const [selectedPartType, setSelectedPartType] = useState('');
     const [partNumber, setPartNumber] = useState('');
     const [gcNumber, setGcNumber] = useState('');
     const [availablePartTypes, setAvailablePartTypes] = useState<Category[]>([]);
+    const [addingToCart, setAddingToCart] = useState<number | null>(null);
+    const [addingToWishlist, setAddingToWishlist] = useState<number | null>(null);
 
-    // Brand change হলে সেই brand এর part types show করা (No API call!)
     useEffect(() => {
         if (selectedBrand) {
             const selectedBrandData = brands.find(brand => brand.slug === selectedBrand);
             if (selectedBrandData) {
                 setAvailablePartTypes(selectedBrandData.categories);
             }
-            setSelectedPartType(''); // Reset part type selection
+            setSelectedPartType('');
         } else {
             setAvailablePartTypes(allCategories);
             setSelectedPartType('');
@@ -101,8 +105,84 @@ const Home: React.FC<HomeProps> = ({
         router.get('/products', params);
     };
 
+    const handleAddToCart = async (productId: number) => {
+        setAddingToCart(productId);
+        try {
+            const response = await fetch('/api/cart/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf_token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ product_id: productId, quantity: 1 }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                // Dispatch event to update cart count in layout
+                window.dispatchEvent(new CustomEvent('cartUpdated', {
+                    detail: { cartCount: data.cartCount }
+                }));
+
+                // Show toast notification
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'success', message: data.message }
+                }));
+            } else {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'error', message: data.message || 'Failed to add to cart' }
+                }));
+            }
+        } catch (error) {
+            console.error('Add to cart error:', error);
+            window.dispatchEvent(new CustomEvent('showToast', {
+                detail: { type: 'error', message: 'An error occurred. Please try again.' }
+            }));
+        } finally {
+            setAddingToCart(null);
+        }
+    };
+
+    const handleAddToWishlist = async (productId: number) => {
+        setAddingToWishlist(productId);
+        try {
+            const response = await fetch(`/wishlist/add/${productId}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrf_token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'success', message: data.message || 'Added to wishlist' }
+                }));
+                // Reload to update wishlist count
+                router.reload({ only: ['wishlistCount'] });
+            } else {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'error', message: data.message || 'Failed to add to wishlist' }
+                }));
+            }
+        } catch (error) {
+            console.error('Add to wishlist error:', error);
+            window.dispatchEvent(new CustomEvent('showToast', {
+                detail: { type: 'error', message: 'An error occurred. Please try again.' }
+            }));
+        } finally {
+            setAddingToWishlist(null);
+        }
+    };
+
     const formatPrice = (price: number): string => {
-        return `£${price.toLocaleString('en-BD', { minimumFractionDigits: 0 })}`;
+        return `£${price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
     const renderStars = (rating: number) => {
@@ -115,13 +195,131 @@ const Home: React.FC<HomeProps> = ({
         ));
     };
 
-    // Show only top 6 categories
     const topCategories = categories.slice(0, 6);
-    // Show only top 5 brands for display
     const topBrands = brands.slice(0, 5);
-
-    // Get selected brand name for display
     const selectedBrandName = selectedBrand ? brands.find(b => b.slug === selectedBrand)?.name : '';
+
+    const ProductCard: React.FC<{ product: Product; showNewBadge?: boolean }> = ({ product, showNewBadge = false }) => (
+        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all group">
+            <div className="relative">
+                <Link href={`/products/${product.slug}`}>
+                    <img
+                        src={`/storage/${product.image}`}
+                        alt={product.name}
+                        className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                            e.currentTarget.src = '/storage/products/placeholder-product.jpg';
+                        }}
+                    />
+                </Link>
+                {showNewBadge && (
+                    <span className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 text-xs rounded font-medium">
+                        NEW
+                    </span>
+                )}
+                {!showNewBadge && product.sale_price && (
+                    <span className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 text-xs rounded font-medium">
+                        -{product.discount_percentage}%
+                    </span>
+                )}
+
+                {/* Wishlist Button - Top Right */}
+                <button
+                    onClick={() => handleAddToWishlist(product.id)}
+                    disabled={addingToWishlist === product.id}
+                    className="absolute top-2 right-2 bg-white hover:bg-red-50 text-gray-600 hover:text-red-600 p-2 rounded-full shadow-md transition-all disabled:opacity-50"
+                    title="Add to Wishlist"
+                >
+                    {addingToWishlist === product.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                        <Heart size={16} />
+                    )}
+                </button>
+            </div>
+
+            <div className="p-3">
+                <Link href={`/products/${product.slug}`}>
+                    <h3 className="text-sm font-semibold text-gray-800 mb-1 line-clamp-2 hover:text-blue-600 leading-tight">
+                        {product.name}
+                    </h3>
+                </Link>
+                <p className="text-xs text-gray-500 mb-1">{product.sku}</p>
+                <p className="text-xs text-blue-600 mb-2 font-medium">{product.brand.name}</p>
+
+                {product.rating > 0 && (
+                    <div className="flex items-center mb-2">
+                        <div className="flex items-center">
+                            {renderStars(product.rating)}
+                        </div>
+                        <span className="text-xs text-gray-500 ml-1">({product.reviews_count})</span>
+                    </div>
+                )}
+
+                <div className="flex items-center justify-between mb-2">
+                    <div>
+                        {product.sale_price ? (
+                            <div className="flex items-center space-x-1">
+                                <span className="text-sm font-bold text-green-600">{formatPrice(product.sale_price)}</span>
+                                <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
+                            </div>
+                        ) : (
+                            <span className="text-sm font-bold text-gray-800">{formatPrice(product.price)}</span>
+                        )}
+                    </div>
+                </div>
+
+                {/* Stock Status */}
+                {!product.in_stock ? (
+                    <button
+                        disabled
+                        className="w-full bg-gray-300 text-gray-500 px-3 py-2 rounded text-xs font-medium cursor-not-allowed flex items-center justify-center"
+                    >
+                        Out of Stock
+                    </button>
+                ) : product.stock_quantity <= 5 ? (
+                    <div>
+                        <p className="text-xs text-orange-600 mb-1 font-medium">Only {product.stock_quantity} left!</p>
+                        <button
+                            onClick={() => handleAddToCart(product.id)}
+                            disabled={addingToCart === product.id}
+                            className="w-full bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-1"
+                        >
+                            {addingToCart === product.id ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>Adding...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <ShoppingCart size={14} />
+                                    <span>Add to Cart</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                ) : (
+                    <button
+                        onClick={() => handleAddToCart(product.id)}
+                        disabled={addingToCart === product.id}
+                        className="w-full bg-blue-600 text-white px-3 py-2 rounded text-xs font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center space-x-1"
+                    >
+                        {addingToCart === product.id ? (
+                            <>
+                                <Loader2 size={14} className="animate-spin" />
+                                <span>Adding...</span>
+                            </>
+                        ) : (
+                            <>
+                                <ShoppingCart size={14} />
+                                <span>Add to Cart</span>
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
+        </div>
+    );
 
     return (
         <AppLayout>
@@ -130,7 +328,7 @@ const Home: React.FC<HomeProps> = ({
                 <meta name="description" content="Find quality boiler spare parts from top brands. PCB, Pumps, Valves & More." />
             </Head>
 
-            {/* Hero Section - More Compact */}
+            {/* Hero Section */}
             <section className="relative h-[500px] bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 flex items-center">
                 <div className="absolute inset-0 bg-black bg-opacity-60"></div>
                 <div
@@ -139,7 +337,6 @@ const Home: React.FC<HomeProps> = ({
                 ></div>
                 <div className="relative max-w-6xl mx-auto px-4 w-full">
                     <div className="flex items-center justify-between">
-                        {/* Left Content - More Concise */}
                         <div className="w-full lg:w-1/2 text-white">
                             <h1 className="text-3xl lg:text-4xl font-bold mb-3 leading-tight">
                                 Find Boiler Spare Parts Fast
@@ -156,7 +353,7 @@ const Home: React.FC<HomeProps> = ({
                             </Link>
                         </div>
 
-                        {/* Right Search Panel - Dynamic Part Types */}
+                        {/* Right Search Panel */}
                         <div className="hidden lg:block w-1/2 ml-8">
                             <div className="bg-white rounded-lg p-5 shadow-2xl">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">Quick Search</h3>
@@ -271,7 +468,7 @@ const Home: React.FC<HomeProps> = ({
                 </div>
             </section>
 
-            {/* Features - More Professional */}
+            {/* Features */}
             <section className="py-8 bg-white border-b border-gray-100">
                 <div className="max-w-6xl mx-auto px-4">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -307,7 +504,7 @@ const Home: React.FC<HomeProps> = ({
                 </div>
             </section>
 
-            {/* Categories - Only Top 6 */}
+            {/* Categories */}
             <section className="py-12 bg-gray-50">
                 <div className="max-w-6xl mx-auto px-4">
                     <div className="flex justify-between items-center mb-8">
@@ -340,7 +537,7 @@ const Home: React.FC<HomeProps> = ({
                 </div>
             </section>
 
-            {/* Featured Products - More Professional Grid */}
+            {/* Featured Products */}
             <section className="py-12 bg-white">
                 <div className="max-w-6xl mx-auto px-4">
                     <div className="flex justify-between items-center mb-8">
@@ -358,67 +555,13 @@ const Home: React.FC<HomeProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                         {featuredProducts.slice(0, 8).map((product) => (
-                            <div key={product.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all group">
-                                <div className="relative">
-                                    <Link href={`/products/${product.slug}`}>
-                                        <img
-                                            src={`/storage/${product.image}`}
-                                            alt={product.name}
-                                            className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
-                                        />
-                                    </Link>
-                                    {product.sale_price && (
-                                        <span className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 text-xs rounded font-medium">
-                                            -{product.discount_percentage}%
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="p-3">
-                                    <Link href={`/products/${product.slug}`}>
-                                        <h3 className="text-sm font-semibold text-gray-800 mb-1 line-clamp-2 hover:text-blue-600 leading-tight">
-                                            {product.name}
-                                        </h3>
-                                    </Link>
-                                    <p className="text-xs text-gray-500 mb-1">{product.sku}</p>
-                                    <p className="text-xs text-blue-600 mb-2 font-medium">{product.brand.name}</p>
-
-                                    {product.rating > 0 && (
-                                        <div className="flex items-center mb-2">
-                                            <div className="flex items-center">
-                                                {renderStars(product.rating)}
-                                            </div>
-                                            <span className="text-xs text-gray-500 ml-1">({product.reviews_count})</span>
-                                        </div>
-                                    )}
-
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            {product.sale_price ? (
-                                                <div className="flex items-center space-x-1">
-                                                    <span className="text-sm font-bold text-green-600">{formatPrice(product.sale_price)}</span>
-                                                    <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
-                                                </div>
-                                            ) : (
-                                                <span className="text-sm font-bold text-gray-800">{formatPrice(product.price)}</span>
-                                            )}
-                                        </div>
-                                        <button
-                                            className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700 transition-colors"
-                                            onClick={() => {
-                                                router.post('/cart/add', { product_id: product.id, quantity: 1 });
-                                            }}
-                                        >
-                                            Add to Cart
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
+                            <ProductCard key={product.id} product={product} />
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* Latest Products - Only 4 */}
+            {/* Latest Products */}
             {latestProducts.length > 0 && (
                 <section className="py-12 bg-gray-50">
                     <div className="max-w-6xl mx-auto px-4">
@@ -437,57 +580,14 @@ const Home: React.FC<HomeProps> = ({
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                             {latestProducts.map((product) => (
-                                <div key={product.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-all group">
-                                    <div className="relative">
-                                        <Link href={`/products/${product.slug}`}>
-                                            <img
-                                                src={`/storage/${product.image}`}
-                                                alt={product.name}
-                                                className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
-                                            />
-                                        </Link>
-                                        <span className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 text-xs rounded font-medium">
-                                            NEW
-                                        </span>
-                                    </div>
-                                    <div className="p-3">
-                                        <Link href={`/products/${product.slug}`}>
-                                            <h3 className="text-sm font-semibold text-gray-800 mb-1 line-clamp-2 hover:text-blue-600 leading-tight">
-                                                {product.name}
-                                            </h3>
-                                        </Link>
-                                        <p className="text-xs text-gray-500 mb-1">{product.sku}</p>
-                                        <p className="text-xs text-blue-600 mb-3 font-medium">{product.brand}</p>
-
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                {product.sale_price ? (
-                                                    <div className="flex items-center space-x-1">
-                                                        <span className="text-sm font-bold text-green-600">{formatPrice(product.sale_price)}</span>
-                                                        <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-sm font-bold text-gray-800">{formatPrice(product.price)}</span>
-                                                )}
-                                            </div>
-                                            <button
-                                                className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700 transition-colors"
-                                                onClick={() => {
-                                                    router.post('/cart/add', { product_id: product.id, quantity: 1 });
-                                                }}
-                                            >
-                                                Add to Cart
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                                <ProductCard key={product.id} product={product} showNewBadge />
                             ))}
                         </div>
                     </div>
                 </section>
             )}
 
-            {/* Brands - Only Top 5 */}
+            {/* Brands */}
             <section className="py-12 bg-white">
                 <div className="max-w-6xl mx-auto px-4">
                     <div className="flex justify-between items-center mb-8">
@@ -514,6 +614,9 @@ const Home: React.FC<HomeProps> = ({
                                         src={`/storage/${brand.logo}`}
                                         alt={brand.name}
                                         className="h-12 object-contain mx-auto grayscale group-hover:grayscale-0 transition-all"
+                                        onError={(e) => {
+                                            e.currentTarget.src = '/storage/brands/placeholder-brand.png';
+                                        }}
                                     />
                                 </div>
                                 <h3 className="mt-2 text-sm font-semibold text-gray-800 group-hover:text-blue-600">

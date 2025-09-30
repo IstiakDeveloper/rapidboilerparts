@@ -139,6 +139,7 @@
         @apply bg-background text-foreground;
     }
 
+
     @keyframes slide-in-right {
         from {
             transform: translateX(100%);

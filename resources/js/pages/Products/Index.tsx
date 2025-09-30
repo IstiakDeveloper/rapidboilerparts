@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Search, Filter, X, ChevronDown, Star, Grid, List, SortAsc, ShoppingCart, Heart, Eye } from 'lucide-react';
+import { Search, Filter, X, ChevronDown, Star, Grid, List, SortAsc, ShoppingCart, Heart, Eye, Loader2 } from 'lucide-react';
 import AppLayout from '@/layouts/AppLayout';
 
 interface Product {
@@ -85,8 +85,11 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
     filters,
     totalProducts
 }) => {
+    const { csrf_token } = usePage<ProductsPageProps>().props;
     const [showFilters, setShowFilters] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [addingToCart, setAddingToCart] = useState<number | null>(null);
+    const [addingToWishlist, setAddingToWishlist] = useState<number | null>(null);
     const [localFilters, setLocalFilters] = useState({
         search: filters.search || '',
         brand: filters.brand || '',
@@ -100,6 +103,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
         sort: filters.sort || 'name'
     });
 
+
     const formatPrice = (price: number): string => {
         return `£${price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
@@ -112,6 +116,78 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                 className={i < Math.floor(rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}
             />
         ));
+    };
+
+    const handleAddToCart = async (productId: number) => {
+        setAddingToCart(productId);
+        try {
+            const response = await fetch('/api/cart/add', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf_token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ product_id: productId, quantity: 1 }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                window.dispatchEvent(new CustomEvent('cartUpdated', {
+                    detail: { cartCount: data.cartCount }
+                }));
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'success', message: data.message }
+                }));
+            } else {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'error', message: data.message || 'Failed to add to cart' }
+                }));
+            }
+        } catch (error) {
+            console.error('Add to cart error:', error);
+            window.dispatchEvent(new CustomEvent('showToast', {
+                detail: { type: 'error', message: 'An error occurred. Please try again.' }
+            }));
+        } finally {
+            setAddingToCart(null);
+        }
+    };
+
+    const handleAddToWishlist = async (productId: number) => {
+        setAddingToWishlist(productId);
+        try {
+            const response = await fetch(`/wishlist/add/${productId}`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrf_token,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'success', message: data.message || 'Added to wishlist' }
+                }));
+                router.reload({ only: ['wishlistCount'] });
+            } else {
+                window.dispatchEvent(new CustomEvent('showToast', {
+                    detail: { type: 'error', message: data.message || 'Failed to add to wishlist' }
+                }));
+            }
+        } catch (error) {
+            console.error('Add to wishlist error:', error);
+            window.dispatchEvent(new CustomEvent('showToast', {
+                detail: { type: 'error', message: 'An error occurred. Please try again.' }
+            }));
+        } finally {
+            setAddingToWishlist(null);
+        }
     };
 
     const handleFilterChange = (key: string, value: any) => {
@@ -452,13 +528,13 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                         {products.data.length > 0 ? (
                             <>
                                 <div className={`${viewMode === 'grid'
-                                        ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
-                                        : 'space-y-4'
+                                    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
+                                    : 'space-y-4'
                                     }`}>
                                     {products.data.map((product) => (
                                         <div key={product.id} className={`${viewMode === 'grid'
-                                                ? 'bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow'
-                                                : 'bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex gap-4 hover:shadow-md transition-shadow'
+                                            ? 'bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow'
+                                            : 'bg-white rounded-lg shadow-sm border border-gray-200 p-4 flex gap-4 hover:shadow-md transition-shadow'
                                             }`}>
                                             {viewMode === 'grid' ? (
                                                 // Grid View
@@ -485,8 +561,17 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                                                             </div>
                                                         )}
                                                         <div className="absolute top-2 right-2 flex flex-col space-y-2">
-                                                            <button className="p-2 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors">
-                                                                <Heart size={16} className="text-gray-600" />
+                                                            <button
+                                                                onClick={() => handleAddToWishlist(product.id)}
+                                                                disabled={addingToWishlist === product.id}
+                                                                className="p-2 bg-white rounded-full shadow-md hover:bg-red-50 transition-colors disabled:opacity-50"
+                                                                title="Add to Wishlist"
+                                                            >
+                                                                {addingToWishlist === product.id ? (
+                                                                    <Loader2 size={16} className="text-gray-600 animate-spin" />
+                                                                ) : (
+                                                                    <Heart size={16} className="text-gray-600" />
+                                                                )}
                                                             </button>
                                                             <button className="p-2 bg-white rounded-full shadow-md hover:bg-gray-50 transition-colors">
                                                                 <Eye size={16} className="text-gray-600" />
@@ -566,13 +651,19 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                                                                 )}
                                                             </div>
                                                             <button
-                                                                disabled={!product.in_stock}
-                                                                className={`p-2 rounded-md transition-colors ${product.in_stock
-                                                                        ? 'bg-red-600 text-white hover:bg-red-700'
-                                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                                    }`}
+                                                                onClick={() => handleAddToCart(product.id)}
+                                                                disabled={!product.in_stock || addingToCart === product.id}
+                                                                className={`p-2 rounded-md transition-colors flex items-center justify-center ${product.in_stock
+                                                                    ? 'bg-red-600 text-white hover:bg-red-700'
+                                                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                                    } ${addingToCart === product.id ? 'opacity-50' : ''}`}
+                                                                title="Add to Cart"
                                                             >
-                                                                <ShoppingCart size={16} />
+                                                                {addingToCart === product.id ? (
+                                                                    <Loader2 size={16} className="animate-spin" />
+                                                                ) : (
+                                                                    <ShoppingCart size={16} />
+                                                                )}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -671,8 +762,8 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                                                                 <button
                                                                     disabled={!product.in_stock}
                                                                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${product.in_stock
-                                                                            ? 'bg-red-600 text-white hover:bg-red-700'
-                                                                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                                        ? 'bg-red-600 text-white hover:bg-red-700'
+                                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                                                         }`}
                                                                 >
                                                                     Add to Cart
@@ -724,8 +815,8 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                                                             page: page.toString()
                                                         })}`}
                                                         className={`px-3 py-2 rounded-md text-sm ${isCurrentPage
-                                                                ? 'bg-red-600 text-white'
-                                                                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                                                            ? 'bg-red-600 text-white'
+                                                            : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
                                                             }`}
                                                     >
                                                         {page}
