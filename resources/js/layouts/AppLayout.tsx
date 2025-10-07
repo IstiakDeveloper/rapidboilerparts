@@ -25,6 +25,15 @@ interface CartItem {
     };
 }
 
+interface Category {
+    id: number;
+    name: string;
+    slug: string;
+    icon: string;
+    image?: string;
+    description?: string;
+}
+
 interface PageProps {
     auth: {
         user: {
@@ -38,6 +47,7 @@ interface PageProps {
     cartCount: number;
     wishlistCount: number;
     siteSettings: Record<string, string>;
+    categories: Category[];
     flash?: {
         success?: string;
         error?: string;
@@ -53,7 +63,15 @@ interface AppLayoutProps {
 }
 
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
-    const { auth, cartCount: initialCartCount = 0, wishlistCount = 0, siteSettings = {}, flash, csrf_token } = usePage<PageProps>().props;
+    const {
+        auth,
+        cartCount: initialCartCount = 0,
+        wishlistCount = 0,
+        siteSettings = {},
+        categories = [],
+        flash,
+        csrf_token
+    } = usePage<PageProps>().props;
 
     const [cartCount, setCartCount] = useState(initialCartCount);
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -148,7 +166,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             if (response.ok) {
                 const data = await response.json();
                 setCartItems(data.items || []);
-                setCartCount(data.count || 0); // ← এই line add করো
+                setCartCount(data.count || 0);
             }
         } catch (error) {
             console.error('Failed to load cart items:', error);
@@ -200,7 +218,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     setCartCount(data.cartCount);
                 }
 
-                // ← এই line add করো - immediately refresh count from API
                 await loadCartItems();
 
                 window.dispatchEvent(new CustomEvent('cartUpdated', {
@@ -236,9 +253,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             });
 
             if (!response.ok) {
-                console.error('Response status:', response.status);
-                const text = await response.text();
-                console.error('Response body:', text);
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
 
@@ -250,7 +264,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     setCartCount(data.cartCount);
                 }
 
-                // ← এই line add করো - immediately refresh
                 await loadCartItems();
 
                 window.dispatchEvent(new CustomEvent('cartUpdated', {
@@ -275,15 +288,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
     const cartTotal = cartItems.reduce((sum, item) => sum + (item.product.final_price * item.quantity), 0);
 
-    const categories = [
-        { name: 'PCB Boards', slug: 'pcb-boards', icon: '🔌' },
-        { name: 'Pumps', slug: 'pumps', icon: '💧' },
-        { name: 'Diverter Valves', slug: 'diverter-valves', icon: '🔧' },
-        { name: 'Heat Exchangers', slug: 'heat-exchangers', icon: '🔥' },
-        { name: 'Gas Valves', slug: 'gas-valves', icon: '⚡' },
-        { name: 'Fans & Motors', slug: 'fans-motors', icon: '🌀' },
-    ];
-
     const ToastIcon = ({ type }: { type: string }) => {
         switch (type) {
             case 'success': return <CheckCircle size={20} />;
@@ -300,9 +304,9 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             {toastMessage && (
                 <div className="fixed top-20 right-4 z-[60] animate-slide-in-right">
                     <div className={`rounded-lg shadow-lg px-4 py-3 flex items-center space-x-3 min-w-[300px] ${toastMessage.type === 'success' ? 'bg-green-600' :
-                        toastMessage.type === 'error' ? 'bg-red-600' :
-                            toastMessage.type === 'warning' ? 'bg-orange-600' :
-                                'bg-blue-600'
+                            toastMessage.type === 'error' ? 'bg-red-600' :
+                                toastMessage.type === 'warning' ? 'bg-orange-600' :
+                                    'bg-blue-600'
                         } text-white`}>
                         <ToastIcon type={toastMessage.type} />
                         <span className="text-sm font-medium flex-1">{toastMessage.message}</span>
@@ -354,18 +358,18 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             {/* Header */}
             <header className={`sticky top-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-white/95 backdrop-blur-lg shadow-lg' : 'bg-white shadow-sm'}`}>
-                {/* Top Bar - keeping existing code */}
+                {/* Top Bar */}
                 <div className="border-b border-gray-100">
                     <div className="max-w-7xl mx-auto px-4 py-2">
                         <div className="flex justify-between items-center">
                             <div className="hidden md:flex items-center space-x-4 text-xs text-gray-600">
-                                <a href={`mailto:${siteSettings.contact_email || 'info@rapidboilerparts.com'}`} className="flex items-center space-x-1.5 hover:text-red-600 transition-colors">
+                                <a href={`mailto:${siteSettings.contact_email}`} className="flex items-center space-x-1.5 hover:text-red-600 transition-colors">
                                     <Mail size={12} />
-                                    <span>{siteSettings.contact_email || 'info@rapidboilerparts.com'}</span>
+                                    <span>{siteSettings.contact_email}</span>
                                 </a>
-                                <a href={`tel:${siteSettings.contact_phone || '01919338762'}`} className="flex items-center space-x-1.5 hover:text-red-600 transition-colors">
+                                <a href={`tel:${siteSettings.contact_phone}`} className="flex items-center space-x-1.5 hover:text-red-600 transition-colors">
                                     <Phone size={12} />
-                                    <span>{siteSettings.contact_phone || '01919 338762'}</span>
+                                    <span>{siteSettings.contact_phone}</span>
                                 </a>
                                 <div className="flex items-center space-x-1.5 text-green-600">
                                     <Clock size={12} />
@@ -452,15 +456,13 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     </div>
                 </div>
 
-                {/* Main Header - keeping existing nav code */}
+                {/* Main Header */}
                 <div className="max-w-7xl mx-auto px-4 py-3">
                     <div className="flex items-center justify-between">
                         <Link href="/" className="flex items-center group">
                             <div className="relative">
                                 <div className="w-12 h-12 bg-gradient-to-r from-red-600 to-red-700 rounded-xl flex items-center justify-center mr-3 transform group-hover:scale-105 transition-transform shadow-lg">
-                                    <div className="text-white font-bold text-xs text-center leading-tight">
-                                        <img src="/logo.png" alt="Logo" />
-                                    </div>
+                                    <img src="/logo.png" alt={siteSettings.site_name} className="w-full h-full object-contain" />
                                 </div>
                                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
                                     <Zap size={8} className="text-white" />
@@ -468,10 +470,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             </div>
                             <div className="hidden md:block">
                                 <h1 className="text-xl font-bold bg-gradient-to-r from-gray-800 to-red-600 bg-clip-text text-transparent">
-                                    {siteSettings.site_name || 'RapidBoilerParts'}
+                                    {siteSettings.site_name}
                                 </h1>
                                 <p className="text-xs text-gray-600 font-medium -mt-0.5">
-                                    {siteSettings.site_tagline || 'Fast. Reliable. Expert.'}
+                                    {siteSettings.site_tagline}
                                 </p>
                             </div>
                         </Link>
@@ -491,7 +493,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                     <ChevronDown size={14} className={`ml-1 transition-transform ${showCategories ? 'rotate-180' : ''}`} />
                                 </button>
 
-                                {showCategories && (
+                                {showCategories && categories.length > 0 && (
                                     <div
                                         className="absolute left-0 mt-1 w-72 bg-white rounded-xl shadow-2xl border border-gray-100 py-3 z-50"
                                         onMouseEnter={() => setShowCategories(true)}
@@ -500,7 +502,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                         <div className="grid grid-cols-2 gap-1 px-3">
                                             {categories.map((category) => (
                                                 <Link
-                                                    key={category.slug}
+                                                    key={category.id}
                                                     href={`/categories/${category.slug}`}
                                                     className="flex items-center space-x-2.5 p-2.5 rounded-lg hover:bg-red-50 transition-all group"
                                                 >
@@ -550,7 +552,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             </div>
 
                             <a
-                                href={`https://wa.me/${siteSettings.whatsapp_number || '+447832156716'}`}
+                                href={`https://wa.me/${siteSettings.whatsapp_number}`}
                                 className="hidden md:flex items-center space-x-1.5 bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600 transition-all shadow-md hover:shadow-lg text-sm font-medium"
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -585,7 +587,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     </div>
                 </div>
 
-                {/* Mobile Menu - keeping existing code */}
+                {/* Mobile Menu */}
                 {mobileMenuOpen && (
                     <div className="lg:hidden bg-white border-t border-gray-100 shadow-lg">
                         <div className="px-4 py-3 space-y-3">
@@ -609,12 +611,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             </nav>
 
                             <div className="pt-3 border-t border-gray-100 space-y-2">
-                                <a href={`tel:${siteSettings.contact_phone || '01919338762'}`} className="flex items-center space-x-2 text-gray-600 text-sm hover:text-red-600">
+                                <a href={`tel:${siteSettings.contact_phone}`} className="flex items-center space-x-2 text-gray-600 text-sm hover:text-red-600">
                                     <Phone size={16} />
-                                    <span>{siteSettings.contact_phone || '01919 338762'}</span>
+                                    <span>{siteSettings.contact_phone}</span>
                                 </a>
                                 <a
-                                    href={`https://wa.me/${siteSettings.whatsapp_number || '+447832156716'}`}
+                                    href={`https://wa.me/${siteSettings.whatsapp_number}`}
                                     className="flex items-center space-x-2 bg-green-500 text-white p-2.5 rounded-lg text-sm font-medium hover:bg-green-600"
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -791,7 +793,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             <main className="min-h-screen">{children}</main>
 
-            {/* Footer - keeping existing footer code */}
+            {/* Footer */}
             <footer className="bg-gradient-to-r from-gray-900 to-gray-800 text-white">
                 <div className="max-w-7xl mx-auto px-4 py-8">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -801,12 +803,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                     <span className="text-white font-bold text-xs">RBP</span>
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-base">{siteSettings.site_name || 'RapidBoilerParts'}</h3>
-                                    <p className="text-xs text-gray-400">{siteSettings.site_tagline || 'Fast. Reliable. Expert.'}</p>
+                                    <h3 className="font-bold text-base">{siteSettings.site_name}</h3>
+                                    <p className="text-xs text-gray-400">{siteSettings.site_tagline}</p>
                                 </div>
                             </div>
 
-                            <p className="text-xs text-gray-400 mb-4">{siteSettings.site_description || 'UK\'s leading supplier of boiler spare parts.'}</p>
+                            <p className="text-xs text-gray-400 mb-4">{siteSettings.site_description}</p>
 
                             <div className="flex items-center space-x-3 mb-4">
                                 <div className="bg-green-600 px-2 py-1 rounded-full text-xs font-medium">Trusted</div>
@@ -853,7 +855,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                             <h4 className="font-bold text-sm mb-4">Shop Categories</h4>
                             <ul className="space-y-2 text-xs">
                                 {categories.slice(0, 5).map((category) => (
-                                    <li key={category.slug}>
+                                    <li key={category.id}>
                                         <Link href={`/categories/${category.slug}`} className="text-gray-400 hover:text-white transition-colors">
                                             {category.name}
                                         </Link>
@@ -869,8 +871,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                 <div className="flex items-start space-x-2">
                                     <Phone size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
                                     <div>
-                                        <a href={`tel:${siteSettings.contact_phone || '01919338762'}`} className="text-gray-300 hover:text-white transition-colors">
-                                            {siteSettings.contact_phone || '01919 338762'}
+                                        <a href={`tel:${siteSettings.contact_phone}`} className="text-gray-300 hover:text-white transition-colors">
+                                            {siteSettings.contact_phone}
                                         </a>
                                         <p className="text-gray-500">Mon-Fri 8AM-6PM</p>
                                     </div>
@@ -878,15 +880,15 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
                                 <div className="flex items-start space-x-2">
                                     <Mail size={14} className="text-red-400 mt-0.5 flex-shrink-0" />
-                                    <a href={`mailto:${siteSettings.contact_email || 'info@rapidboilerparts.com'}`} className="text-gray-300 hover:text-white transition-colors break-words">
-                                        {siteSettings.contact_email || 'info@rapidboilerparts.com'}
+                                    <a href={`mailto:${siteSettings.contact_email}`} className="text-gray-300 hover:text-white transition-colors break-words">
+                                        {siteSettings.contact_email}
                                     </a>
                                 </div>
 
                                 <div className="flex items-start space-x-2">
                                     <MessageCircle size={14} className="text-green-400 mt-0.5 flex-shrink-0" />
                                     <a
-                                        href={`https://wa.me/${siteSettings.whatsapp_number || '+447832156716'}`}
+                                        href={`https://wa.me/${siteSettings.whatsapp_number}`}
                                         className="text-gray-300 hover:text-white transition-colors"
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -901,24 +903,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                         <p className="text-gray-300">{siteSettings.company_address}</p>
                                     </div>
                                 )}
-
-                                <div className="mt-4 pt-4 border-t border-gray-700">
-                                    <h5 className="font-semibold mb-2 text-xs">Newsletter</h5>
-                                    <form className="flex">
-                                        <input
-                                            type="email"
-                                            placeholder="Your email"
-                                            className="flex-1 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-l-md focus:outline-none focus:border-red-500 text-white placeholder-gray-400 text-xs"
-                                            required
-                                        />
-                                        <button
-                                            type="submit"
-                                            className="bg-red-600 text-white px-3 py-1.5 rounded-r-md hover:bg-red-700 transition-colors text-xs font-medium"
-                                        >
-                                            Subscribe
-                                        </button>
-                                    </form>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -926,7 +910,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                     <div className="border-t border-gray-700 pt-6 mt-6">
                         <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
                             <div className="flex flex-col md:flex-row items-center space-y-2 md:space-y-0 md:space-x-4 text-xs text-gray-400">
-                                <p>&copy; {new Date().getFullYear()} {siteSettings.company_name || 'RapidBoilerParts'}. All rights reserved.</p>
+                                <p>&copy; {new Date().getFullYear()} {siteSettings.company_name}. All rights reserved.</p>
                                 {(siteSettings.company_registration || siteSettings.vat_number) && (
                                     <div className="flex items-center space-x-2">
                                         {siteSettings.company_registration && (
@@ -987,7 +971,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             {/* Fixed Action Buttons */}
             <div className="fixed bottom-4 right-4 z-40 flex flex-col space-y-2">
                 <a
-                    href={`https://wa.me/${siteSettings.whatsapp_number || '+447832156716'}`}
+                    href={`https://wa.me/${siteSettings.whatsapp_number}`}
                     className="group bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-xl transition-all transform hover:scale-110"
                     target="_blank"
                     rel="noopener noreferrer"

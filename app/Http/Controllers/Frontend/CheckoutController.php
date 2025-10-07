@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\UserAddress;
 use App\Models\Coupon;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -127,7 +128,7 @@ class CheckoutController extends Controller
     /**
      * Process checkout and create order
      */
-    public function processCheckout(Request $request)
+    public function processCheckout(Request $request): RedirectResponse
     {
         $request->validate([
             'billing_address_id' => 'required|exists:user_addresses,id',

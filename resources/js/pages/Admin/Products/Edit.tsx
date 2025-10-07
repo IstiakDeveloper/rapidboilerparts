@@ -156,7 +156,7 @@ export default function Edit({ product, brands, categories, services, attributes
     const [imagePreview, setImagePreview] = useState<string[]>([]);
     const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
 
-    const { data, setData, post, processing, errors, progress } = useForm<FormData>({
+    const { data, setData, put, processing, errors, progress } = useForm<FormData>({
         name: product.name || '',
         slug: product.slug || '',
         short_description: product.short_description || '',
@@ -224,11 +224,14 @@ export default function Edit({ product, brands, categories, services, attributes
             .replace(/[^a-z0-9\s-]/g, '')
             .replace(/\s+/g, '-')
             .replace(/-+/g, '-')
-            .trim('-');
+            .trim();
     }, []);
 
     const handleNameChange = (value: string) => {
         setData('name', value);
+        if (!data.slug || data.slug === generateSlug(data.name)) {
+            setData('slug', generateSlug(value));
+        }
     };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -332,11 +335,52 @@ export default function Edit({ product, brands, categories, services, attributes
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        post(`/admin/products/${product.id}`, {
-            onSuccess: () => {
-                router.visit('/admin/products');
-            },
-        });
+
+        // যদি নতুন image থাকে তাহলে post ব্যবহার করুন (multipart/form-data এর জন্য)
+        if (data.images && data.images.length > 0) {
+            router.post(`/admin/products/${product.id}`, {
+                ...data,
+                _method: 'PUT'
+            }, {
+                forceFormData: true,
+                onSuccess: () => {
+                    router.visit('/admin/products');
+                },
+            });
+        } else {
+            // নতুন image না থাকলে সরাসরি put ব্যবহার করুন
+            put(`/admin/products/${product.id}`, {
+                onSuccess: () => {
+                    router.visit('/admin/products');
+                },
+            });
+        }
+    };
+
+    const handleSaveAsDraft = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // Status draft করুন
+        const draftData = { ...data, status: 'draft' as const };
+
+        if (data.images && data.images.length > 0) {
+            router.post(`/admin/products/${product.id}`, {
+                ...draftData,
+                _method: 'PUT'
+            }, {
+                forceFormData: true,
+                onSuccess: () => {
+                    router.visit('/admin/products');
+                },
+            });
+        } else {
+            put(`/admin/products/${product.id}`, {
+                data: draftData,
+                onSuccess: () => {
+                    router.visit('/admin/products');
+                },
+            });
+        }
     };
 
     const tabs = [
@@ -418,6 +462,26 @@ export default function Edit({ product, brands, categories, services, attributes
                     </div>
                 )}
 
+                {/* Upload Progress */}
+                {progress && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-sm font-medium text-blue-900">Uploading...</span>
+                                    <span className="text-sm font-medium text-blue-900">{progress.percentage}%</span>
+                                </div>
+                                <div className="w-full bg-blue-200 rounded-full h-2">
+                                    <div
+                                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                        style={{ width: `${progress.percentage}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Tabs Navigation */}
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
                     <div className="border-b border-gray-200">
@@ -429,8 +493,8 @@ export default function Edit({ product, brands, categories, services, attributes
                                         key={tab.id}
                                         onClick={() => setActiveTab(tab.id)}
                                         className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 transition-colors ${activeTab === tab.id
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                             }`}
                                     >
                                         <Icon className="h-4 w-4" />
@@ -1229,8 +1293,8 @@ export default function Edit({ product, brands, categories, services, attributes
                                                         <div
                                                             key={model.id}
                                                             className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedModels.includes(model.id)
-                                                                    ? 'bg-blue-50 border-blue-200'
-                                                                    : 'border-gray-200 hover:bg-gray-50'
+                                                                ? 'bg-blue-50 border-blue-200'
+                                                                : 'border-gray-200 hover:bg-gray-50'
                                                                 }`}
                                                             onClick={() => toggleModel(model.id)}
                                                         >
@@ -1309,10 +1373,7 @@ export default function Edit({ product, brands, categories, services, attributes
                                 <div className="flex items-center gap-3">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setData('status', 'draft');
-                                            handleSubmit;
-                                        }}
+                                        onClick={handleSaveAsDraft}
                                         disabled={processing}
                                         className="px-4 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 flex items-center gap-2"
                                     >
