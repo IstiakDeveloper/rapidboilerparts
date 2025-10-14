@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
+import { Toaster } from 'react-hot-toast';
 import {
     LayoutDashboard,
     Package,
@@ -46,7 +47,7 @@ interface User {
     user_type: string;
 }
 
-interface PageProps {
+interface PageProps extends Record<string, unknown> {
     auth: {
         user: User;
     };
@@ -148,6 +149,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             name: 'Order Management',
             icon: ShoppingBag,
             children: [
+                {
+                    name: 'POS',
+                    href: '/admin/pos',
+                    icon: ShoppingBag,
+                },
                 {
                     name: 'All Orders',
                     href: '/admin/orders',
@@ -399,6 +405,21 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
     return (
         <div className="flex h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 overflow-hidden">
+            {/* Toast Container */}
+            <Toaster
+                position="top-right"
+                toastOptions={{
+                    duration: 4000,
+                    style: {
+                        background: '#fff',
+                        color: '#363636',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+                        borderRadius: '0.5rem',
+                        padding: '1rem',
+                    },
+                }}
+            />
+
             {/* Mobile sidebar overlay */}
             {sidebarOpen && (
                 <div
@@ -456,7 +477,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                              scrollbarWidth: 'thin',
                              scrollbarColor: '#cbd5e1 #f1f5f9'
                          }}>
-                        <style jsx>{`
+                        <style>{`
                             nav::-webkit-scrollbar {
                                 width: 4px;
                             }
@@ -529,6 +550,17 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                                 <span className="text-sm font-medium text-emerald-700">Online</span>
                             </div>
+
+                            <Link
+                                href="/admin/pos"
+                                className="flex items-center space-x-2 px-4 py-2 rounded-lg
+                                    bg-gradient-to-r from-blue-500 to-indigo-600 text-white
+                                    hover:from-blue-600 hover:to-indigo-700 border border-blue-400/50
+                                    transition-all duration-200 hover:scale-105 hover:shadow-md"
+                            >
+                                <ShoppingBag className="w-4 h-4" />
+                                <span className="font-medium">POS</span>
+                            </Link>
 
                             <button
                                 onClick={handleLogout}

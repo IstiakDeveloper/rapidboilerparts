@@ -64,7 +64,7 @@ class ProductController extends Controller
         // Sorting
         $sortField = $request->get('sort', 'created_at');
         $sortDirection = $request->get('direction', 'desc');
-        
+
         if (in_array($sortField, ['name', 'price', 'stock_quantity', 'created_at'])) {
             $query->orderBy($sortField, $sortDirection);
         }
@@ -114,6 +114,7 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'sku' => 'required|string|unique:products,sku',
+            'barcode' => 'nullable|string|unique:products,barcode',
             'manufacturer_part_number' => 'nullable|string|max:255',
             'gc_number' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
@@ -163,12 +164,15 @@ class ProductController extends Controller
             }
 
             // Set in_stock based on stock_quantity and manage_stock
-            $validated['in_stock'] = $validated['manage_stock'] 
-                ? $validated['stock_quantity'] > 0 
+            $validated['in_stock'] = $validated['manage_stock']
+                ? $validated['stock_quantity'] > 0
                 : true;
 
             // Create product
             $product = Product::create($validated);
+
+            // Generate barcode after product creation
+            $barcode = $product->generateBarcode();
 
             // Handle images
             if ($request->hasFile('images')) {
@@ -262,6 +266,7 @@ class ProductController extends Controller
             'short_description' => 'nullable|string|max:500',
             'description' => 'nullable|string',
             'sku' => ['required', 'string', Rule::unique('products')->ignore($product->id)],
+            'barcode' => ['nullable', 'string', Rule::unique('products')->ignore($product->id)],
             'manufacturer_part_number' => 'nullable|string|max:255',
             'gc_number' => 'nullable|string|max:255',
             'price' => 'required|numeric|min:0',
@@ -313,8 +318,8 @@ class ProductController extends Controller
             }
 
             // Set in_stock based on stock_quantity and manage_stock
-            $validated['in_stock'] = $validated['manage_stock'] 
-                ? $validated['stock_quantity'] > 0 
+            $validated['in_stock'] = $validated['manage_stock']
+                ? $validated['stock_quantity'] > 0
                 : true;
 
             // Update product
@@ -489,7 +494,7 @@ class ProductController extends Controller
 
         $csvData = [];
         $csvData[] = [
-            'ID', 'Name', 'SKU', 'Brand', 'Category', 'Price', 'Sale Price', 
+            'ID', 'Name', 'SKU', 'Brand', 'Category', 'Price', 'Sale Price',
             'Stock', 'Status', 'Featured', 'Services Count', 'Created At'
         ];
 
@@ -511,7 +516,7 @@ class ProductController extends Controller
         }
 
         $filename = 'products-' . date('Y-m-d-H-i-s') . '.csv';
-        
+
         $handle = fopen('php://temp', 'w+');
         foreach ($csvData as $row) {
             fputcsv($handle, $row);
@@ -532,7 +537,7 @@ class ProductController extends Controller
     {
         foreach ($images as $index => $image) {
             $path = $image->store('products', 'public');
-            
+
             ProductImage::create([
                 'product_id' => $product->id,
                 'image_path' => $path,
@@ -550,7 +555,7 @@ class ProductController extends Controller
     {
         // Get existing images that should be kept
         $keepImageIds = $request->input('existing_images', []);
-        
+
         // Delete images that are not in the keep list
         $imagesToDelete = $product->images()->whereNotIn('id', $keepImageIds)->get();
         foreach ($imagesToDelete as $image) {
@@ -562,7 +567,7 @@ class ProductController extends Controller
         if ($request->hasFile('images')) {
             $existingCount = $product->images()->count();
             $this->handleImageUpload($product, $request->file('images'));
-            
+
             // If no existing images, make first new image primary
             if ($existingCount === 0) {
                 $product->images()->first()?->update(['is_primary' => true]);
@@ -594,7 +599,7 @@ class ProductController extends Controller
     {
         // Detach all existing services
         $product->services()->detach();
-        
+
         // Attach new services
         if (!empty($services)) {
             $this->attachServices($product, $services);
@@ -621,7 +626,7 @@ class ProductController extends Controller
     {
         // Delete existing attribute values
         $product->attributeValues()->delete();
-        
+
         // Create new attribute values
         if (!empty($attributes)) {
             $this->attachAttributes($product, $attributes);
@@ -659,7 +664,7 @@ class ProductController extends Controller
 
         // Remove primary status from all images
         $product->images()->update(['is_primary' => false]);
-        
+
         // Set this image as primary
         $image->update(['is_primary' => true]);
 
@@ -720,8 +725,8 @@ class ProductController extends Controller
     public function manageServices(Product $product): Response
     {
         $product->load([
-            'services' => function($q) { 
-                $q->active()->ordered()->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions']); 
+            'services' => function($q) {
+                $q->active()->ordered()->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions']);
             }
         ]);
 
@@ -768,7 +773,7 @@ class ProductController extends Controller
     public function getAvailableServices(Product $product)
     {
         $assignedServiceIds = $product->services()->pluck('product_services.id');
-        
+
         $availableServices = ProductService::active()
             ->whereNotIn('id', $assignedServiceIds)
             ->ordered()

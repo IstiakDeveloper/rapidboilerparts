@@ -14,15 +14,22 @@ export default function Create() {
     });
 
     const generateSlug = (name: string) => {
-        return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s-]/g, '')  // Remove all special characters except spaces and hyphens
+            .replace(/\s+/g, '-')           // Replace spaces with hyphens
+            .replace(/-+/g, '-')            // Replace multiple hyphens with single hyphen
+            .replace(/^-+|-+$/g, '');       // Remove hyphens from start and end
     };
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const name = e.target.value;
+        // Always generate new slug when name changes
         setData(prev => ({
             ...prev,
             name,
-            slug: prev.slug || generateSlug(name)
+            slug: generateSlug(name)
         }));
     };
 

@@ -82,6 +82,35 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     const [cartSidebarOpen, setCartSidebarOpen] = useState(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [loadingCart, setLoadingCart] = useState(false);
+
+    // Store cart data in localStorage
+    const storeCartData = (items: CartItem[], count: number) => {
+        try {
+            localStorage.setItem('cart_items', JSON.stringify(items));
+            localStorage.setItem('cart_count', count.toString());
+        } catch (error) {
+            console.error('Error storing cart data:', error);
+        }
+    };
+
+    // Load cart data from localStorage
+    const loadCartDataFromStorage = () => {
+        try {
+            const storedItems = localStorage.getItem('cart_items');
+            const storedCount = localStorage.getItem('cart_count');
+            if (storedItems && storedCount) {
+                setCartItems(JSON.parse(storedItems));
+                setCartCount(parseInt(storedCount, 10));
+            }
+        } catch (error) {
+            console.error('Error loading cart data:', error);
+        }
+    };
+
+    // Initialize cart from localStorage
+    useEffect(() => {
+        loadCartDataFromStorage();
+    }, []);
     const [updatingItem, setUpdatingItem] = useState<number | null>(null);
     const [deletingItem, setDeletingItem] = useState<number | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -156,6 +185,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     const loadCartItems = async () => {
         setLoadingCart(true);
         try {
+            // Try to get cart from API first
             const response = await fetch('/api/cart/items', {
                 headers: {
                     'Accept': 'application/json',
@@ -165,11 +195,20 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
             if (response.ok) {
                 const data = await response.json();
-                setCartItems(data.items || []);
-                setCartCount(data.count || 0);
+                const items = data.items || [];
+                const count = data.count || 0;
+
+                setCartItems(items);
+                setCartCount(count);
+                storeCartData(items, count); // Store in localStorage for persistence
+            } else {
+                // If API fails, load from localStorage for guest users
+                loadCartDataFromStorage();
             }
         } catch (error) {
             console.error('Failed to load cart items:', error);
+            // Load from localStorage as fallback
+            loadCartDataFromStorage();
             showToast('error', 'Failed to load cart items');
         } finally {
             setLoadingCart(false);
@@ -210,18 +249,19 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             if (response.ok) {
                 const data = await response.json();
 
-                setCartItems(prev => prev.map(item =>
+                const updatedItems = cartItems.map(item =>
                     item.id === itemId ? { ...item, quantity: newQuantity } : item
-                ));
+                );
+                const newCount = data.cartCount || updatedItems.reduce((sum, item) => sum + item.quantity, 0);
 
-                if (data.cartCount !== undefined) {
-                    setCartCount(data.cartCount);
-                }
+                setCartItems(updatedItems);
+                setCartCount(newCount);
+                storeCartData(updatedItems, newCount);
 
                 await loadCartItems();
 
                 window.dispatchEvent(new CustomEvent('cartUpdated', {
-                    detail: { cartCount: data.cartCount }
+                    detail: { cartCount: newCount }
                 }));
 
                 showToast('success', 'Quantity updated');
@@ -259,15 +299,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             const data = await response.json();
 
             if (data.success) {
-                setCartItems(prev => prev.filter(item => item.id !== itemId));
-                if (data.cartCount !== undefined) {
-                    setCartCount(data.cartCount);
-                }
+                const updatedItems = cartItems.filter(item => item.id !== itemId);
+                const newCount = data.cartCount || updatedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+                setCartItems(updatedItems);
+                setCartCount(newCount);
+                storeCartData(updatedItems, newCount);
 
                 await loadCartItems();
 
                 window.dispatchEvent(new CustomEvent('cartUpdated', {
-                    detail: { cartCount: data.cartCount }
+                    detail: { cartCount: newCount }
                 }));
                 showToast('success', data.message || 'Item removed from cart');
             } else {

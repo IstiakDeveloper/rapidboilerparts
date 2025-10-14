@@ -4,7 +4,30 @@ import { ArrowLeft, Save, Settings, DollarSign, Hash, Info } from 'lucide-react'
 import AdminLayout from '@/Layouts/AdminLayout';
 
 export default function Create() {
-  const { data, setData, post, processing, errors } = useForm({
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove all special characters except spaces and hyphens
+      .replace(/\s+/g, '-')         // Replace spaces with hyphens
+      .replace(/-+/g, '-')          // Replace multiple hyphens with single hyphen
+      .replace(/^-+|-+$/g, '');     // Remove hyphens from start and end
+  };
+
+  interface ServiceFormData {
+    name: string;
+    slug: string;
+    description: string;
+    type: 'setup' | 'delivery' | 'installation' | 'maintenance' | 'other';
+    price: string;
+    is_optional: boolean;
+    is_free: boolean;
+    conditions: Array<{ key: string; value: string; }>;
+    is_active: boolean;
+    sort_order: number;
+  }
+
+  const { data, setData, post, processing, errors } = useForm<ServiceFormData>({
     name: '',
     slug: '',
     description: '',
@@ -20,6 +43,14 @@ export default function Create() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     post('/admin/product-services');
+  };
+
+  const handleNameChange = (value: string) => {
+    setData(prev => ({
+      ...prev,
+      name: value,
+      slug: generateSlug(value)  // Auto-generate slug from name
+    }));
   };
 
   const serviceTypes = [
@@ -109,7 +140,7 @@ export default function Create() {
                   <input
                     type="text"
                     value={data.name}
-                    onChange={(e) => setData('name', e.target.value)}
+                    onChange={(e) => handleNameChange(e.target.value)}
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                       errors.name ? 'border-red-300' : 'border-gray-300'
                     }`}

@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\{
     CategoryController as AdminCategoryController,
     BrandController as AdminBrandController,
     ProductController as AdminProductController,
+    PosController,
     OrderController as AdminOrderController,
     UserController as AdminUserController,
     ProductAttributeController,
@@ -308,6 +309,17 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::resource('settings', SettingController::class)->except(['show']);
     Route::post('settings/bulk-action', [SettingController::class, 'bulkAction'])->name('settings.bulk-action');
     Route::get('settings/group/{group}', [SettingController::class, 'byGroup'])->name('settings.by-group');
+
+    // POS System
+    Route::prefix('pos')->name('pos.')->group(function () {
+        Route::get('/', [PosController::class, 'index'])->name('index');
+        Route::get('/search-products', [PosController::class, 'searchProducts'])->name('search-products');
+        Route::get('/get-customer', [PosController::class, 'getCustomer'])->name('get-customer');
+        Route::post('/create-customer', [PosController::class, 'createCustomer'])->name('create-customer');
+        Route::post('/create-order', [PosController::class, 'createOrder'])->name('create-order');
+        Route::get('/order/{order}', [PosController::class, 'getOrder'])->name('get-order');
+        Route::get('/receipt/{order}', [PosController::class, 'printReceipt'])->name('print-receipt');
+    });
 
     // Reports & Analytics
     Route::prefix('reports')->name('reports.')->group(function () {

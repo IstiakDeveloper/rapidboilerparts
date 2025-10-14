@@ -4,6 +4,16 @@ import { ArrowLeft, Save, Tag, Type, Hash, Filter, CheckSquare } from 'lucide-re
 import AdminLayout from '@/Layouts/AdminLayout';
 
 export default function Create() {
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')  // Remove all special characters except spaces and hyphens
+      .replace(/\s+/g, '-')           // Replace spaces with hyphens
+      .replace(/-+/g, '-')            // Replace multiple hyphens with single hyphen
+      .replace(/^-+|-+$/g, '');       // Remove hyphens from start and end
+  };
+
   const { data, setData, post, processing, errors } = useForm({
     name: '',
     slug: '',
@@ -12,6 +22,14 @@ export default function Create() {
     is_filterable: false,
     sort_order: 0,
   });
+
+  const handleNameChange = (value: string) => {
+    setData(prev => ({
+      ...prev,
+      name: value,
+      slug: generateSlug(value)
+    }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,7 +108,7 @@ export default function Create() {
                   <input
                     type="text"
                     value={data.name}
-                    onChange={(e) => setData('name', e.target.value)}
+                    onChange={(e) => handleNameChange(e.target.value)}
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
                       errors.name ? 'border-red-300' : 'border-gray-300'
                     }`}

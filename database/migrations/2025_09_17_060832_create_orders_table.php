@@ -14,10 +14,10 @@ return new class extends Migration
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
             $table->string('order_number')->unique();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
 
             // Order Status
-            $table->enum('status', ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])
+            $table->enum('status', ['pending', 'processing', 'completed', 'shipped', 'delivered', 'cancelled', 'refunded'])
                 ->default('pending');
 
             // Amounts

@@ -7,10 +7,10 @@ import AdminLayout from '@/layouts/AdminLayout';
 interface Order {
     id: number;
     order_number: string;
-    user: {
+    user?: {
         first_name: string;
         last_name: string;
-    };
+    } | null;
     total_amount: number;
     status: string;
     created_at: string;
@@ -219,7 +219,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, recent_orders, recent_inqu
                                                 #{order.order_number}
                                             </h3>
                                             <p className="text-sm text-gray-600">
-                                                {order.user.first_name} {order.user.last_name}
+                                                {order.user ? `${order.user.first_name} ${order.user.last_name}` : 'Guest User'}
                                             </p>
                                             <p className="text-xs text-gray-500 mt-1">
                                                 {formatDate(order.created_at)}

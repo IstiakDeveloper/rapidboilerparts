@@ -25,15 +25,22 @@ export default function Create({ parent_categories = [] }: Props) {
     });
 
     const generateSlug = (name: string) => {
-        return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        return name
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
     };
 
     const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const name = e.target.value;
+        // Always generate new slug when name changes
         setData(prev => ({
             ...prev,
             name,
-            slug: prev.slug || generateSlug(name)
+            slug: generateSlug(name)
         }));
     };
 

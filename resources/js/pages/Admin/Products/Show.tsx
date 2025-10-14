@@ -8,6 +8,7 @@ interface Product {
   name: string;
   slug: string;
   sku: string;
+  barcode: string;
   short_description: string;
   description: string;
   price: string | number;
@@ -167,6 +168,8 @@ export default function Show({ product }: PageProps) {
               </div>
               <div className="flex items-center gap-4 mt-2 text-sm text-gray-600">
                 <span>SKU: {product.sku}</span>
+                <span>•</span>
+                <span>Barcode: {product.barcode}</span>
                 <span>•</span>
                 <span>Created: {new Date(product.created_at).toLocaleDateString()}</span>
               </div>
@@ -540,6 +543,13 @@ export default function Show({ product }: PageProps) {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-600">GC Number</span>
                     <span className="font-medium text-gray-900 font-mono text-xs">{product.gc_number}</span>
+                  </div>
+                )}
+
+                {product.barcode && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Barcode</span>
+                    <span className="font-medium text-gray-900 font-mono text-xs">{product.barcode}</span>
                   </div>
                 )}
 

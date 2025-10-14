@@ -140,7 +140,6 @@ const ProductShow: React.FC<ShowProps> = ({ product, services, reviews, relatedP
     const [selectedServices, setSelectedServices] = useState<number[]>(
         services.filter(s => s.is_mandatory).map(s => s.id)
     );
-    const [activeTab, setActiveTab] = useState<'description' | 'specifications' | 'compatibility' | 'reviews'>('description');
 
     const formatPrice = (price: number): string => {
         return `£${price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -515,119 +514,78 @@ const ProductShow: React.FC<ShowProps> = ({ product, services, reviews, relatedP
                     </div>
                 </div>
 
-                {/* Tabs Section */}
+                {/* Product Details Section */}
                 <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-12">
-                    {/* Tab Headers */}
-                    <div className="border-b border-gray-200">
-                        <div className="flex space-x-8 px-6">
-                            <button
-                                onClick={() => setActiveTab('description')}
-                                className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'description'
-                                        ? 'border-red-600 text-red-600'
-                                        : 'border-transparent text-gray-600 hover:text-gray-800'
-                                    }`}
-                            >
-                                Description
-                            </button>
-                            {product.attributes.length > 0 && (
-                                <button
-                                    onClick={() => setActiveTab('specifications')}
-                                    className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'specifications'
-                                            ? 'border-red-600 text-red-600'
-                                            : 'border-transparent text-gray-600 hover:text-gray-800'
-                                        }`}
-                                >
-                                    Specifications
-                                </button>
-                            )}
-                            {product.compatible_models.length > 0 && (
-                                <button
-                                    onClick={() => setActiveTab('compatibility')}
-                                    className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'compatibility'
-                                            ? 'border-red-600 text-red-600'
-                                            : 'border-transparent text-gray-600 hover:text-gray-800'
-                                        }`}
-                                >
-                                    Compatibility ({product.compatible_models.reduce((sum, brand) => sum + brand.models.length, 0)})
-                                </button>
-                            )}
-                            <button
-                                onClick={() => setActiveTab('reviews')}
-                                className={`py-4 border-b-2 font-medium transition-colors ${activeTab === 'reviews'
-                                        ? 'border-red-600 text-red-600'
-                                        : 'border-transparent text-gray-600 hover:text-gray-800'
-                                    }`}
-                            >
-                                Reviews ({product.reviews_count})
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Tab Content */}
                     <div className="p-6">
-                        {/* Description Tab */}
-                        {activeTab === 'description' && (
+                        {/* Description Section */}
+                        <div className="mb-12">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-6">Product Description</h2>
                             <div className="prose max-w-none">
                                 {product.description ? (
                                     <div dangerouslySetInnerHTML={{ __html: product.description }} />
                                 ) : (
                                     <p className="text-gray-600">No detailed description available for this product.</p>
                                 )}
+                            </div>
+                        </div>
 
-                                {/* Physical Specifications */}
-                                {(product.weight || product.dimensions.length || product.dimensions.width || product.dimensions.height) && (
-                                    <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                                        <h3 className="text-lg font-semibold text-gray-800 mb-3">Physical Specifications</h3>
-                                        <div className="grid grid-cols-2 gap-4 text-sm">
-                                            {product.weight && (
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 w-24">Weight:</span>
-                                                    <span className="font-medium">{product.weight} kg</span>
-                                                </div>
-                                            )}
-                                            {product.dimensions.length && (
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 w-24">Length:</span>
-                                                    <span className="font-medium">{product.dimensions.length} cm</span>
-                                                </div>
-                                            )}
-                                            {product.dimensions.width && (
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 w-24">Width:</span>
-                                                    <span className="font-medium">{product.dimensions.width} cm</span>
-                                                </div>
-                                            )}
-                                            {product.dimensions.height && (
-                                                <div className="flex items-center">
-                                                    <span className="text-gray-500 w-24">Height:</span>
-                                                    <span className="font-medium">{product.dimensions.height} cm</span>
-                                                </div>
-                                            )}
-                                        </div>
+                        {/* Technical Specifications Section */}
+                        <div className="mb-12">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-6">Technical Details</h2>
+
+                            {/* Physical Specifications */}
+                            {(product.weight || product.dimensions.length || product.dimensions.width || product.dimensions.height) && (
+                                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-3">Physical Specifications</h3>
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        {product.weight && (
+                                            <div className="flex items-center">
+                                                <span className="text-gray-500 w-24">Weight:</span>
+                                                <span className="font-medium">{product.weight} kg</span>
+                                            </div>
+                                        )}
+                                        {product.dimensions.length && (
+                                            <div className="flex items-center">
+                                                <span className="text-gray-500 w-24">Length:</span>
+                                                <span className="font-medium">{product.dimensions.length} cm</span>
+                                            </div>
+                                        )}
+                                        {product.dimensions.width && (
+                                            <div className="flex items-center">
+                                                <span className="text-gray-500 w-24">Width:</span>
+                                                <span className="font-medium">{product.dimensions.width} cm</span>
+                                            </div>
+                                        )}
+                                        {product.dimensions.height && (
+                                            <div className="flex items-center">
+                                                <span className="text-gray-500 w-24">Height:</span>
+                                                <span className="font-medium">{product.dimensions.height} cm</span>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Specifications Tab */}
-                        {activeTab === 'specifications' && (
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Technical Specifications</h3>
-                                <div className="divide-y divide-gray-200">
-                                    {product.attributes.map((attr, index) => (
-                                        <div key={index} className="py-3 flex items-start">
-                                            <span className="text-gray-600 w-1/3">{attr.name}:</span>
-                                            <span className="font-medium text-gray-800 w-2/3">{attr.value}</span>
-                                        </div>
-                                    ))}
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {/* Compatibility Tab */}
-                        {activeTab === 'compatibility' && (
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-800 mb-4">Compatible Boiler Models</h3>
+                            {/* Technical Specifications */}
+                            {product.attributes.length > 0 && (
+                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                    <h3 className="text-lg font-semibold text-gray-800 p-4 bg-gray-50 border-b border-gray-200">Technical Specifications</h3>
+                                    <div className="divide-y divide-gray-200">
+                                        {product.attributes.map((attr, index) => (
+                                            <div key={index} className="p-4 flex items-start">
+                                                <span className="text-gray-600 w-1/3">{attr.name}:</span>
+                                                <span className="font-medium text-gray-800 w-2/3">{attr.value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Compatibility Section */}
+                        {product.compatible_models.length > 0 && (
+                            <div className="mb-12">
+                                <h2 className="text-2xl font-bold text-gray-800 mb-6">Compatible Boiler Models</h2>
                                 <p className="text-gray-600 mb-6">This part is compatible with the following boiler models:</p>
 
                                 <div className="space-y-6">
@@ -663,12 +621,12 @@ const ProductShow: React.FC<ShowProps> = ({ product, services, reviews, relatedP
                             </div>
                         )}
 
-                        {/* Reviews Tab */}
-                        {activeTab === 'reviews' && (
-                            <div>
-                                {product.reviews_count > 0 ? (
-                                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                        {/* Rating Summary */}
+                        {/* Reviews Section */}
+                        <div className="mb-12">
+                            <h2 className="text-2xl font-bold text-gray-800 mb-6">Customer Reviews</h2>
+                            {product.reviews_count > 0 ? (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    {/* Rating Summary */}
                                         <div className="lg:col-span-1">
                                             <div className="bg-gray-50 rounded-lg p-6 sticky top-4">
                                                 <h3 className="text-lg font-semibold text-gray-800 mb-4">Customer Reviews</h3>
@@ -737,7 +695,6 @@ const ProductShow: React.FC<ShowProps> = ({ product, services, reviews, relatedP
                                     </div>
                                 )}
                             </div>
-                        )}
                     </div>
                 </div>
 

@@ -52,10 +52,53 @@ class RegisteredUserController extends Controller
             'is_active' => true,
         ]);
 
+        // Get guest cart data before login
+        $guestCartItems = \App\Models\Cart::where('session_id', session()->getId())->get();
+        $guestCartCount = $guestCartItems->sum('quantity');
+
         event(new Registered($user));
 
         Auth::login($user);
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        // Transfer cart items from guest session to user account
+        if ($guestCartItems->isNotEmpty()) {
+            foreach ($guestCartItems as $cartItem) {
+                // Check if product already exists in user's cart
+                $existingCartItem = \App\Models\Cart::where('user_id', $user->id)
+                    ->where('product_id', $cartItem->product_id)
+                    ->first();
+
+                if ($existingCartItem) {
+                    // Update quantity if product already exists
+                    $existingCartItem->update([
+                        'quantity' => $existingCartItem->quantity + $cartItem->quantity,
+                        'selected_services' => array_merge(
+                            $existingCartItem->selected_services ?? [],
+                            $cartItem->selected_services ?? []
+                        )
+                    ]);
+                } else {
+                    // Create new cart item for user
+                    \App\Models\Cart::create([
+                        'user_id' => $user->id,
+                        'product_id' => $cartItem->product_id,
+                        'quantity' => $cartItem->quantity,
+                        'selected_services' => $cartItem->selected_services
+                    ]);
+                }
+
+                // Delete the guest cart item
+                $cartItem->delete();
+            }
+
+            // Update session data
+            $userCartItems = \App\Models\Cart::where('user_id', $user->id)->get();
+            $userCartCount = $userCartItems->sum('quantity');
+
+            session()->put('cart_count', $userCartCount);
+
+            // Dispatch a cart updated event
+            event(new \App\Events\CartUpdated($user->id, $userCartCount));
+        }        return redirect()->intended(route('dashboard', absolute: false));
     }
 }

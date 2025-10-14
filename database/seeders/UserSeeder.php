@@ -33,20 +33,5 @@ class UserSeeder extends Seeder
             'is_active' => true,
             'email_verified_at' => now(),
         ]);
-
-        // Test Customer
-        User::create([
-            'first_name' => 'John',
-            'last_name' => 'Doe',
-            'email' => 'customer@example.com',
-            'password' => Hash::make('password123'),
-            'phone' => '+8801700000002',
-            'user_type' => 'customer',
-            'is_active' => true,
-            'email_verified_at' => now(),
-        ]);
-
-        // Additional test customers
-        User::factory(10)->create();
     }
 }

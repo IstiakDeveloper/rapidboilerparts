@@ -1,9 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { Head, useForm, router } from '@inertiajs/react';
 import AdminLayout from '@/Layouts/AdminLayout';
-import { 
-  Package, Plus, X, Upload, ImageIcon, Settings, Tags, Wrench, 
-  AlertTriangle, Save, Eye, EyeOff, Star, StarOff 
+import {
+  Package, Plus, X, Upload, ImageIcon, Settings, Tags, Wrench,
+  AlertTriangle, Save, Eye, EyeOff, Star, StarOff
 } from 'lucide-react';
 
 interface Brand {
@@ -132,24 +132,26 @@ export default function Create({ brands, categories, services, attributes, compa
   const generateSlug = useCallback((name: string) => {
     return name
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .trim('-');
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove all special characters except spaces and hyphens
+      .replace(/\s+/g, '-')         // Replace spaces with hyphens
+      .replace(/-+/g, '-')          // Replace multiple hyphens with single hyphen
+      .replace(/^-+|-+$/g, '');     // Remove hyphens from start and end
   }, []);
 
   const handleNameChange = (value: string) => {
-    setData('name', value);
-    if (!data.slug) {
-      setData('slug', generateSlug(value));
-    }
+    setData(prev => ({
+      ...prev,
+      name: value,
+      slug: generateSlug(value)  // Always generate slug when name changes
+    }));
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files) {
       setData('images', files);
-      
+
       const previews: string[] = [];
       Array.from(files).forEach(file => {
         const reader = new FileReader();
@@ -191,7 +193,7 @@ export default function Create({ brands, categories, services, attributes, compa
   };
 
   const updateService = (serviceId: number, field: string, value: any) => {
-    setData('services', data.services.map(s => 
+    setData('services', data.services.map(s =>
       s.service_id === serviceId ? { ...s, [field]: value } : s
     ));
   };
@@ -212,7 +214,7 @@ export default function Create({ brands, categories, services, attributes, compa
   };
 
   const updateAttribute = (attributeId: number, value: string) => {
-    setData('attributes', data.attributes.map(a => 
+    setData('attributes', data.attributes.map(a =>
       a.attribute_id === attributeId ? { ...a, value } : a
     ));
   };
@@ -221,7 +223,7 @@ export default function Create({ brands, categories, services, attributes, compa
     const newModels = selectedModels.includes(modelId)
       ? selectedModels.filter(id => id !== modelId)
       : [...selectedModels, modelId];
-    
+
     setSelectedModels(newModels);
     setData('compatible_models', newModels);
   };
@@ -278,7 +280,7 @@ export default function Create({ brands, categories, services, attributes, compa
               <X className="h-4 w-4" />
               Cancel
             </button>
-            <button 
+            <button
               onClick={handleSubmit}
               disabled={processing}
               className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
@@ -415,7 +417,7 @@ export default function Create({ brands, categories, services, attributes, compa
                     {/* Product Codes */}
                     <div className="border-t border-gray-200 pt-8">
                       <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Codes & Numbers</h3>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             SKU *
@@ -437,6 +439,21 @@ export default function Create({ brands, categories, services, attributes, compa
                           )}
                         </div>
 
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Barcode <span className="text-gray-500 text-xs">(Auto-generated)</span>
+                          </label>
+                          <input
+                            type="text"
+                            disabled
+                            placeholder="Will be generated automatically"
+                            className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">Format: RBP-BBCC-YYMMDD-RRR</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Manufacturer Part Number
@@ -666,7 +683,7 @@ export default function Create({ brands, categories, services, attributes, compa
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Images</h3>
                   <p className="text-gray-600 mb-6">Upload product images. First image will be set as primary.</p>
-                  
+
                   <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-gray-400 transition-colors">
                     <input
                       type="file"
@@ -716,7 +733,7 @@ export default function Create({ brands, categories, services, attributes, compa
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Services</h3>
                   <p className="text-gray-600 mb-6">Add services like setup, delivery, installation for this product</p>
-                  
+
                   <div className="space-y-6">
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-4">Available Services</h4>
@@ -841,7 +858,7 @@ export default function Create({ brands, categories, services, attributes, compa
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Product Attributes</h3>
                   <p className="text-gray-600 mb-6">Add custom attributes and specifications for this product</p>
-                  
+
                   <div className="space-y-6">
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-4">Available Attributes</h4>
@@ -958,7 +975,7 @@ export default function Create({ brands, categories, services, attributes, compa
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Boiler Compatibility</h3>
                   <p className="text-gray-600 mb-6">Select compatible boiler models for this part</p>
-                  
+
                   <div className="space-y-8">
                     {Object.entries(
                       compatibleModels.reduce((groups, model) => {
@@ -1053,7 +1070,7 @@ export default function Create({ brands, categories, services, attributes, compa
                 >
                   Cancel
                 </button>
-                
+
                 <div className="flex items-center gap-3">
                   <button
                     type="button"

@@ -11,12 +11,12 @@ interface Order {
   total_amount: string | number;
   items_count: number;
   created_at: string;
-  user: {
+  user?: {
     id: number;
     first_name: string;
     last_name: string;
     email: string;
-  };
+  } | null;
 }
 
 interface Filters {
@@ -214,9 +214,9 @@ export default function Index({ orders, filters, order_statuses, payment_statuse
                         </div>
                         <div>
                           <div className="text-sm font-medium text-gray-900">
-                            {order.user.first_name} {order.user.last_name}
+                            {order.user ? `${order.user.first_name} ${order.user.last_name}` : 'Guest User'}
                           </div>
-                          <div className="text-sm text-gray-500">{order.user.email}</div>
+                          <div className="text-sm text-gray-500">{order.user ? order.user.email : 'Guest Order'}</div>
                         </div>
                       </div>
                     </td>

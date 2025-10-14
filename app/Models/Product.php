@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Storage;
+use App\Services\BarcodeService;
 
 class Product extends Model
 {
@@ -18,6 +20,8 @@ class Product extends Model
         'short_description',
         'description',
         'sku',
+        'barcode',
+        'barcode_image',
         'manufacturer_part_number',
         'gc_number',
         'price',
@@ -200,5 +204,38 @@ class Product extends Model
     public function serviceAssignments(): HasMany
     {
         return $this->hasMany(ProductServiceAssignment::class);
+    }
+
+    /**
+     * Generate a unique barcode for the product
+     */
+    public function generateBarcode(): string
+    {
+        // Generate a shorter barcode with format: RB{brand_id}{category_id}{random}
+        // where {random} is a 4-digit number
+        $random = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        $barcode = sprintf(
+            'RB%02d%02d%s',
+            $this->brand_id,
+            $this->category_id,
+            $random
+        );
+
+        // Generate barcode image
+        try {
+            $barcodeService = app(BarcodeService::class);
+            $this->barcode_image = $barcodeService->generateBarcodeImage($barcode);
+            $this->barcode = $barcode;
+            $this->save();
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to generate barcode image: ' . $e->getMessage());
+        }
+
+        return $barcode;
+    }
+
+    public function getBarcodeImageUrlAttribute()
+    {
+        return $this->barcode_image ? Storage::url($this->barcode_image) : null;
     }
 }
