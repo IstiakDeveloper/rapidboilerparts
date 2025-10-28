@@ -33,6 +33,13 @@ class Order extends Model
     protected $fillable = [
         'order_number',
         'user_id',
+        'service_provider_id',
+        'service_provider_charge',
+        'service_provider_status',
+        'assigned_at',
+        'accepted_at',
+        'service_completed_at',
+        'service_provider_notes',
         'status',
         'subtotal',
         'tax_amount',
@@ -55,16 +62,25 @@ class Order extends Model
         'shipping_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
+        'service_provider_charge' => 'decimal:2',
         'billing_address' => 'array',
         'shipping_address' => 'array',
         'shipped_at' => 'datetime',
         'delivered_at' => 'datetime',
+        'assigned_at' => 'datetime',
+        'accepted_at' => 'datetime',
+        'service_completed_at' => 'datetime',
     ];
 
     // Relationships
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function serviceProvider(): BelongsTo
+    {
+        return $this->belongsTo(ServiceProvider::class);
     }
 
     public function items(): HasMany

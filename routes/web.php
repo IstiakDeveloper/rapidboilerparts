@@ -29,7 +29,8 @@ use App\Http\Controllers\Admin\{
     ProductReviewController,
     ContactInquiryController,
     SettingController,
-    ProductServiceController
+    ProductServiceController,
+    ServiceManagementController
 };
 
 use Illuminate\Foundation\Application;
@@ -94,6 +95,7 @@ Route::middleware('auth')->prefix('checkout')->name('checkout.')->group(function
     Route::get('/', [CheckoutController::class, 'index'])->name('index');
     Route::post('/apply-coupon', [CheckoutController::class, 'applyCoupon'])->name('applyCoupon');
     Route::delete('/remove-coupon', [CheckoutController::class, 'removeCoupon'])->name('removeCoupon');
+    Route::post('/areas-by-city', [CheckoutController::class, 'getAreasByCity'])->name('areasByCity');
     Route::post('/process', [CheckoutController::class, 'processCheckout'])->name('process');
     Route::get('/payment/{order}', [CheckoutController::class, 'payment'])->name('payment');
 });
@@ -309,6 +311,30 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::resource('settings', SettingController::class)->except(['show']);
     Route::post('settings/bulk-action', [SettingController::class, 'bulkAction'])->name('settings.bulk-action');
     Route::get('settings/group/{group}', [SettingController::class, 'byGroup'])->name('settings.by-group');
+
+    // Service Management (Providers, Categories, Cities, Areas) - Single Controller
+    Route::prefix('service-management')->name('service-management.')->group(function () {
+        Route::get('/', [ServiceManagementController::class, 'index'])->name('index');
+        Route::get('/create', [ServiceManagementController::class, 'create'])->name('create');
+        Route::post('/', [ServiceManagementController::class, 'store'])->name('store');
+        Route::get('/{serviceManagement}', [ServiceManagementController::class, 'show'])->name('show');
+        Route::get('/{serviceManagement}/edit', [ServiceManagementController::class, 'edit'])->name('edit');
+        Route::put('/{serviceManagement}', [ServiceManagementController::class, 'update'])->name('update');
+        Route::delete('/{serviceManagement}', [ServiceManagementController::class, 'destroy'])->name('destroy');
+
+        // Bulk Actions
+        Route::post('/bulk-update', [ServiceManagementController::class, 'bulkUpdate'])->name('bulk-update');
+
+        // AJAX/API Routes
+        Route::post('/areas-by-city', [ServiceManagementController::class, 'getAreasByCity'])->name('areas-by-city');
+        Route::get('/categories', [ServiceManagementController::class, 'getCategories'])->name('categories');
+        Route::get('/cities', [ServiceManagementController::class, 'getCities'])->name('cities');
+
+        // Quick Actions
+        Route::post('/{serviceManagement}/toggle-status', [ServiceManagementController::class, 'toggleStatus'])->name('toggle-status');
+        Route::post('/{serviceManagement}/verify', [ServiceManagementController::class, 'verify'])->name('verify');
+        Route::post('/{serviceManagement}/reset-daily-orders', [ServiceManagementController::class, 'resetDailyOrders'])->name('reset-daily-orders');
+    });
 
     // POS System
     Route::prefix('pos')->name('pos.')->group(function () {

@@ -30,20 +30,16 @@ interface CartItem {
     product: Product;
 }
 
-interface Address {
+interface City {
     id: number;
-    type: string;
-    first_name: string;
-    last_name: string;
-    company: string | null;
-    address_line_1: string;
-    address_line_2: string | null;
-    city: string;
-    state: string;
-    postal_code: string;
-    country: string;
-    phone: string | null;
-    is_default: boolean;
+    name: string;
+    region: string;
+}
+
+interface Area {
+    id: number;
+    name: string;
+    postcode: string | null;
 }
 
 interface CartSummary {
@@ -69,25 +65,40 @@ interface User {
 interface CheckoutPageProps {
     cartItems: CartItem[];
     cartSummary: CartSummary;
-    addresses: Address[];
+    cities: City[];
     user: User;
 }
 
-const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, cartSummary, addresses, user }) => {
+const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, cartSummary, cities, user }) => {
     const [couponCode, setCouponCode] = useState('');
     const [applyingCoupon, setApplyingCoupon] = useState(false);
     const [couponError, setCouponError] = useState('');
     const [localCartSummary, setLocalCartSummary] = useState(cartSummary);
+    const [sameAsBilling, setSameAsBilling] = useState(false);
 
-    const billingAddresses = addresses.filter(addr => addr.type === 'billing');
-    const shippingAddresses = addresses.filter(addr => addr.type === 'shipping');
-
-    const defaultBilling = billingAddresses.find(addr => addr.is_default) || billingAddresses[0];
-    const defaultShipping = shippingAddresses.find(addr => addr.is_default) || shippingAddresses[0];
+    // Areas state
+    const [billingAreas, setBillingAreas] = useState<Area[]>([]);
+    const [shippingAreas, setShippingAreas] = useState<Area[]>([]);
+    const [loadingBillingAreas, setLoadingBillingAreas] = useState(false);
+    const [loadingShippingAreas, setLoadingShippingAreas] = useState(false);
 
     const { data, setData, post, processing, errors } = useForm({
-        billing_address_id: defaultBilling?.id || '',
-        shipping_address_id: defaultShipping?.id || '',
+        // Billing
+        billing_first_name: user.first_name || '',
+        billing_last_name: user.last_name || '',
+        billing_phone: user.phone || '',
+        billing_city_id: '',
+        billing_area_id: '',
+        billing_address: '',
+
+        // Shipping
+        shipping_first_name: user.first_name || '',
+        shipping_last_name: user.last_name || '',
+        shipping_phone: user.phone || '',
+        shipping_city_id: '',
+        shipping_area_id: '',
+        shipping_address: '',
+
         payment_method: 'cod',
         notes: '',
     });
@@ -95,6 +106,70 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, cartSummary, add
     const formatPrice = (price: number): string => {
         return `£${price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
+
+    // Fetch billing areas when city changes
+    useEffect(() => {
+        if (data.billing_city_id) {
+            setLoadingBillingAreas(true);
+            fetch('/checkout/areas-by-city', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ city_id: data.billing_city_id }),
+            })
+                .then(res => res.json())
+                .then(result => {
+                    setBillingAreas(result.areas || []);
+                    setLoadingBillingAreas(false);
+                })
+                .catch(() => setLoadingBillingAreas(false));
+        } else {
+            setBillingAreas([]);
+            setData('billing_area_id', '');
+        }
+    }, [data.billing_city_id]);
+
+    // Fetch shipping areas when city changes
+    useEffect(() => {
+        if (data.shipping_city_id && !sameAsBilling) {
+            setLoadingShippingAreas(true);
+            fetch('/checkout/areas-by-city', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+                body: JSON.stringify({ city_id: data.shipping_city_id }),
+            })
+                .then(res => res.json())
+                .then(result => {
+                    setShippingAreas(result.areas || []);
+                    setLoadingShippingAreas(false);
+                })
+                .catch(() => setLoadingShippingAreas(false));
+        } else if (!sameAsBilling) {
+            setShippingAreas([]);
+            setData('shipping_area_id', '');
+        }
+    }, [data.shipping_city_id, sameAsBilling]);
+
+    // Handle "Same as billing" checkbox
+    useEffect(() => {
+        if (sameAsBilling) {
+            setData(prev => ({
+                ...prev,
+                shipping_first_name: data.billing_first_name,
+                shipping_last_name: data.billing_last_name,
+                shipping_phone: data.billing_phone,
+                shipping_city_id: data.billing_city_id,
+                shipping_area_id: data.billing_area_id,
+                shipping_address: data.billing_address,
+            }));
+            setShippingAreas(billingAreas);
+        }
+    }, [sameAsBilling]);
 
     const applyCoupon = async () => {
         if (!couponCode.trim()) return;
@@ -150,381 +225,447 @@ const CheckoutPage: React.FC<CheckoutPageProps> = ({ cartItems, cartSummary, add
         post('/checkout/process');
     };
 
-    const formatAddress = (address: Address): string => {
-        const parts = [
-            address.address_line_1,
-            address.address_line_2,
-            address.city,
-            address.state,
-            address.postal_code,
-        ].filter(Boolean);
-        return parts.join(', ');
-    };
-
     return (
         <AppLayout>
-            <Head title="Checkout - RapidBoilerParts" />
+            <Head title="Checkout" />
 
-            <div className="max-w-7xl mx-auto px-4 py-6">
-                <h1 className="text-2xl font-bold text-gray-800 mb-6">Checkout</h1>
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
 
                 <form onSubmit={handleSubmit}>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Main Content */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        {/* Left Column - Address Forms */}
                         <div className="lg:col-span-2 space-y-6">
                             {/* Billing Address */}
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                                <div className="flex items-center mb-4">
-                                    <MapPin className="text-red-600 mr-2" size={20} />
-                                    <h2 className="text-lg font-semibold text-gray-800">Billing Address</h2>
-                                </div>
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                                    <MapPin className="w-5 h-5 mr-2 text-blue-600" />
+                                    Billing Details
+                                </h2>
 
-                                {billingAddresses.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {billingAddresses.map((address) => (
-                                            <label
-                                                key={address.id}
-                                                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                                                    data.billing_address_id === address.id
-                                                        ? 'border-red-600 bg-red-50'
-                                                        : 'border-gray-200 hover:border-gray-300'
-                                                }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="billing_address"
-                                                    value={address.id}
-                                                    checked={data.billing_address_id === address.id}
-                                                    onChange={(e) => setData('billing_address_id', parseInt(e.target.value))}
-                                                    className="mt-1 rounded-full border-gray-300 text-red-600 focus:ring-red-500"
-                                                />
-                                                <div className="ml-3 flex-1">
-                                                    <div className="font-medium text-gray-800">
-                                                        {address.first_name} {address.last_name}
-                                                        {address.is_default && (
-                                                            <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
-                                                                Default
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {address.company && (
-                                                        <div className="text-sm text-gray-600">{address.company}</div>
-                                                    )}
-                                                    <div className="text-sm text-gray-600 mt-1">
-                                                        {formatAddress(address)}
-                                                    </div>
-                                                    {address.phone && (
-                                                        <div className="text-sm text-gray-600">
-                                                            Phone: {address.phone}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                First Name *
                                             </label>
-                                        ))}
+                                            <input
+                                                type="text"
+                                                value={data.billing_first_name}
+                                                onChange={(e) => setData('billing_first_name', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            />
+                                            {errors.billing_first_name && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.billing_first_name}</p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Last Name *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={data.billing_last_name}
+                                                onChange={(e) => setData('billing_last_name', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            />
+                                            {errors.billing_last_name && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.billing_last_name}</p>
+                                            )}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="text-center py-4">
-                                        <p className="text-gray-600 mb-3">No billing address found</p>
-                                        <Link
-                                            href="/profile/addresses"
-                                            className="text-red-600 hover:text-red-700 font-medium"
-                                        >
-                                            Add Billing Address
-                                        </Link>
-                                    </div>
-                                )}
 
-                                {errors.billing_address_id && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.billing_address_id}</p>
-                                )}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Phone Number *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.billing_phone}
+                                            onChange={(e) => setData('billing_phone', e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="+44 7XXX XXXXXX"
+                                            required
+                                        />
+                                        {errors.billing_phone && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.billing_phone}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                City *
+                                            </label>
+                                            <select
+                                                value={data.billing_city_id}
+                                                onChange={(e) => setData('billing_city_id', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                required
+                                            >
+                                                <option value="">Select city</option>
+                                                {cities.map(city => (
+                                                    <option key={city.id} value={city.id}>
+                                                        {city.name} ({city.region})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.billing_city_id && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.billing_city_id}</p>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Area *
+                                            </label>
+                                            <select
+                                                value={data.billing_area_id}
+                                                onChange={(e) => setData('billing_area_id', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                disabled={!data.billing_city_id || loadingBillingAreas}
+                                                required
+                                            >
+                                                <option value="">
+                                                    {loadingBillingAreas ? 'Loading...' : !data.billing_city_id ? 'Select city first' : 'Select area'}
+                                                </option>
+                                                {billingAreas.map(area => (
+                                                    <option key={area.id} value={area.id}>
+                                                        {area.name} {area.postcode && `(${area.postcode})`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.billing_area_id && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.billing_area_id}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Address *
+                                        </label>
+                                        <textarea
+                                            rows={3}
+                                            value={data.billing_address}
+                                            onChange={(e) => setData('billing_address', e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                                            placeholder="Street address, building number, etc."
+                                            required
+                                        />
+                                        {errors.billing_address && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.billing_address}</p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Shipping Address */}
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                                <div className="flex items-center mb-4">
-                                    <Truck className="text-red-600 mr-2" size={20} />
-                                    <h2 className="text-lg font-semibold text-gray-800">Shipping Address</h2>
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                                        <Truck className="w-5 h-5 mr-2 text-blue-600" />
+                                        Shipping Details
+                                    </h2>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={sameAsBilling}
+                                            onChange={(e) => setSameAsBilling(e.target.checked)}
+                                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                        />
+                                        <span className="ml-2 text-sm text-gray-700">Same as billing</span>
+                                    </label>
                                 </div>
 
-                                {shippingAddresses.length > 0 ? (
-                                    <div className="space-y-3">
-                                        {shippingAddresses.map((address) => (
-                                            <label
-                                                key={address.id}
-                                                className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                                                    data.shipping_address_id === address.id
-                                                        ? 'border-red-600 bg-red-50'
-                                                        : 'border-gray-200 hover:border-gray-300'
-                                                }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name="shipping_address"
-                                                    value={address.id}
-                                                    checked={data.shipping_address_id === address.id}
-                                                    onChange={(e) => setData('shipping_address_id', parseInt(e.target.value))}
-                                                    className="mt-1 rounded-full border-gray-300 text-red-600 focus:ring-red-500"
-                                                />
-                                                <div className="ml-3 flex-1">
-                                                    <div className="font-medium text-gray-800">
-                                                        {address.first_name} {address.last_name}
-                                                        {address.is_default && (
-                                                            <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded">
-                                                                Default
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {address.company && (
-                                                        <div className="text-sm text-gray-600">{address.company}</div>
-                                                    )}
-                                                    <div className="text-sm text-gray-600 mt-1">
-                                                        {formatAddress(address)}
-                                                    </div>
-                                                    {address.phone && (
-                                                        <div className="text-sm text-gray-600">
-                                                            Phone: {address.phone}
-                                                        </div>
-                                                    )}
-                                                </div>
+                                <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                First Name *
                                             </label>
-                                        ))}
+                                            <input
+                                                type="text"
+                                                value={data.shipping_first_name}
+                                                onChange={(e) => setData('shipping_first_name', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                disabled={sameAsBilling}
+                                                required
+                                            />
+                                            {errors.shipping_first_name && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.shipping_first_name}</p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Last Name *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={data.shipping_last_name}
+                                                onChange={(e) => setData('shipping_last_name', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                disabled={sameAsBilling}
+                                                required
+                                            />
+                                            {errors.shipping_last_name && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.shipping_last_name}</p>
+                                            )}
+                                        </div>
                                     </div>
-                                ) : (
-                                    <div className="text-center py-4">
-                                        <p className="text-gray-600 mb-3">No shipping address found</p>
-                                        <Link
-                                            href="/profile/addresses"
-                                            className="text-red-600 hover:text-red-700 font-medium"
-                                        >
-                                            Add Shipping Address
-                                        </Link>
-                                    </div>
-                                )}
 
-                                {errors.shipping_address_id && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.shipping_address_id}</p>
-                                )}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Phone Number *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={data.shipping_phone}
+                                            onChange={(e) => setData('shipping_phone', e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="+44 7XXX XXXXXX"
+                                            disabled={sameAsBilling}
+                                            required
+                                        />
+                                        {errors.shipping_phone && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.shipping_phone}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                City *
+                                            </label>
+                                            <select
+                                                value={data.shipping_city_id}
+                                                onChange={(e) => setData('shipping_city_id', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                disabled={sameAsBilling}
+                                                required
+                                            >
+                                                <option value="">Select city</option>
+                                                {cities.map(city => (
+                                                    <option key={city.id} value={city.id}>
+                                                        {city.name} ({city.region})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.shipping_city_id && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.shipping_city_id}</p>
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Area *
+                                            </label>
+                                            <select
+                                                value={data.shipping_area_id}
+                                                onChange={(e) => setData('shipping_area_id', e.target.value)}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                disabled={sameAsBilling || !data.shipping_city_id || loadingShippingAreas}
+                                                required
+                                            >
+                                                <option value="">
+                                                    {loadingShippingAreas ? 'Loading...' : !data.shipping_city_id ? 'Select city first' : 'Select area'}
+                                                </option>
+                                                {shippingAreas.map(area => (
+                                                    <option key={area.id} value={area.id}>
+                                                        {area.name} {area.postcode && `(${area.postcode})`}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            {errors.shipping_area_id && (
+                                                <p className="mt-1 text-sm text-red-600">{errors.shipping_area_id}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Address *
+                                        </label>
+                                        <textarea
+                                            rows={3}
+                                            value={data.shipping_address}
+                                            onChange={(e) => setData('shipping_address', e.target.value)}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                                            placeholder="Street address, building number, etc."
+                                            disabled={sameAsBilling}
+                                            required
+                                        />
+                                        {errors.shipping_address && (
+                                            <p className="mt-1 text-sm text-red-600">{errors.shipping_address}</p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Payment Method */}
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                                <div className="flex items-center mb-4">
-                                    <CreditCard className="text-red-600 mr-2" size={20} />
-                                    <h2 className="text-lg font-semibold text-gray-800">Payment Method</h2>
-                                </div>
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <h2 className="text-xl font-semibold text-gray-900 mb-6 flex items-center">
+                                    <CreditCard className="w-5 h-5 mr-2 text-blue-600" />
+                                    Payment Method
+                                </h2>
 
                                 <div className="space-y-3">
-                                    <label className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                                        data.payment_method === 'cod' ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}>
+                                    <label className="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
                                         <input
                                             type="radio"
                                             name="payment_method"
                                             value="cod"
                                             checked={data.payment_method === 'cod'}
-                                            onChange={(e) => setData('payment_method', e.target.value)}
-                                            className="mt-1 rounded-full border-gray-300 text-red-600 focus:ring-red-500"
+                                            onChange={(e) => setData('payment_method', e.target.value as any)}
+                                            className="w-4 h-4 text-blue-600"
                                         />
-                                        <div className="ml-3">
-                                            <div className="font-medium text-gray-800">Cash on Delivery</div>
-                                            <div className="text-sm text-gray-600 mt-1">
-                                                Pay with cash when your order is delivered
-                                            </div>
-                                        </div>
+                                        <span className="ml-3 font-medium">Cash on Delivery</span>
                                     </label>
-
-                                    <label className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                                        data.payment_method === 'card' ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}>
+                                    <label className="flex items-center p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:border-blue-500 transition-colors opacity-50">
                                         <input
                                             type="radio"
                                             name="payment_method"
                                             value="card"
-                                            checked={data.payment_method === 'card'}
-                                            onChange={(e) => setData('payment_method', e.target.value)}
-                                            className="mt-1 rounded-full border-gray-300 text-red-600 focus:ring-red-500"
+                                            disabled
+                                            className="w-4 h-4 text-blue-600"
                                         />
-                                        <div className="ml-3">
-                                            <div className="font-medium text-gray-800">Credit / Debit Card</div>
-                                            <div className="text-sm text-gray-600 mt-1">
-                                                Pay securely with your card
-                                            </div>
-                                        </div>
-                                    </label>
-
-                                    <label className={`flex items-start p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                                        data.payment_method === 'paypal' ? 'border-red-600 bg-red-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}>
-                                        <input
-                                            type="radio"
-                                            name="payment_method"
-                                            value="paypal"
-                                            checked={data.payment_method === 'paypal'}
-                                            onChange={(e) => setData('payment_method', e.target.value)}
-                                            className="mt-1 rounded-full border-gray-300 text-red-600 focus:ring-red-500"
-                                        />
-                                        <div className="ml-3">
-                                            <div className="font-medium text-gray-800">PayPal</div>
-                                            <div className="text-sm text-gray-600 mt-1">
-                                                Pay with your PayPal account
-                                            </div>
-                                        </div>
+                                        <span className="ml-3 font-medium">Card Payment (Coming Soon)</span>
                                     </label>
                                 </div>
-
-                                {errors.payment_method && (
-                                    <p className="mt-2 text-sm text-red-600">{errors.payment_method}</p>
-                                )}
                             </div>
 
                             {/* Order Notes */}
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                                <h2 className="text-lg font-semibold text-gray-800 mb-4">Order Notes (Optional)</h2>
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Order Notes (Optional)
+                                </label>
                                 <textarea
+                                    rows={3}
                                     value={data.notes}
                                     onChange={(e) => setData('notes', e.target.value)}
-                                    rows={4}
-                                    placeholder="Special instructions for delivery..."
-                                    className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                                    placeholder="Any special instructions for your order..."
                                 />
                             </div>
                         </div>
 
-                        {/* Order Summary Sidebar */}
-                        <div className="lg:col-span-1">
-                            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-4">
-                                <h2 className="text-lg font-bold text-gray-800 mb-4">Order Summary</h2>
-
-                                {/* Cart Items */}
-                                <div className="mb-4 max-h-64 overflow-y-auto space-y-3">
+                        {/* Right Column - Order Summary */}
+                        <div className="space-y-6">
+                            {/* Cart Items */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">Order Summary</h2>
+                                <div className="space-y-4">
                                     {cartItems.map((item) => (
-                                        <div key={item.id} className="flex gap-3 pb-3 border-b border-gray-200 last:border-b-0">
+                                        <div key={item.id} className="flex gap-4">
                                             <img
-                                                src={`/storage/${item.product.image}`}
+                                                src={item.product.image}
                                                 alt={item.product.name}
-                                                className="w-16 h-16 object-cover rounded border border-gray-200"
+                                                className="w-16 h-16 object-cover rounded-lg"
                                             />
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="text-sm font-medium text-gray-800 line-clamp-2">
-                                                    {item.product.name}
-                                                </h4>
-                                                <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
-                                                {item.selected_services.length > 0 && (
-                                                    <p className="text-xs text-gray-500">
-                                                        + {item.selected_services.length} service(s)
-                                                    </p>
-                                                )}
-                                            </div>
-                                            <div className="text-sm font-medium text-gray-800">
-                                                {formatPrice(item.product.final_price * item.quantity + item.services_total)}
+                                            <div className="flex-1">
+                                                <h3 className="text-sm font-medium text-gray-900">{item.product.name}</h3>
+                                                <p className="text-sm text-gray-500">Qty: {item.quantity}</p>
+                                                <p className="text-sm font-semibold text-gray-900">
+                                                    {formatPrice(item.product.final_price * item.quantity)}
+                                                </p>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
+                            </div>
 
-                                {/* Coupon Code */}
-                                <div className="mb-4 pb-4 border-b border-gray-200">
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        <Tag size={16} className="inline mr-1" />
-                                        Coupon Code
-                                    </label>
-                                    {localCartSummary.applied_coupon ? (
-                                        <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded">
-                                            <div>
-                                                <span className="text-sm font-medium text-green-800">
-                                                    {localCartSummary.applied_coupon.code}
-                                                </span>
-                                                <span className="text-xs text-green-600 ml-2">
-                                                    (-{formatPrice(localCartSummary.applied_coupon.discount_amount)})
-                                                </span>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={removeCoupon}
-                                                className="text-red-600 hover:text-red-700 text-sm font-medium"
-                                            >
-                                                Remove
-                                            </button>
+                            {/* Coupon */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Coupon Code
+                                </label>
+                                {localCartSummary.applied_coupon ? (
+                                    <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
+                                        <div className="flex items-center">
+                                            <Check className="w-5 h-5 text-green-600 mr-2" />
+                                            <span className="text-sm font-medium text-green-900">
+                                                {localCartSummary.applied_coupon.code}
+                                            </span>
                                         </div>
-                                    ) : (
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={couponCode}
-                                                onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                                                placeholder="Enter code"
-                                                className="flex-1 p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={applyCoupon}
-                                                disabled={applyingCoupon || !couponCode.trim()}
-                                                className="px-4 py-2 bg-gray-800 text-white rounded text-sm hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
-                                                {applyingCoupon ? 'Applying...' : 'Apply'}
-                                            </button>
-                                        </div>
-                                    )}
-                                    {couponError && (
-                                        <p className="mt-2 text-sm text-red-600 flex items-center">
-                                            <AlertCircle size={14} className="mr-1" />
-                                            {couponError}
-                                        </p>
-                                    )}
-                                </div>
-
-                                {/* Price Breakdown */}
-                                <div className="space-y-2 mb-4">
-                                    <div className="flex justify-between text-sm text-gray-600">
-                                        <span>Subtotal:</span>
-                                        <span>{formatPrice(localCartSummary.subtotal)}</span>
+                                        <button
+                                            type="button"
+                                            onClick={removeCoupon}
+                                            className="text-sm text-red-600 hover:text-red-700"
+                                        >
+                                            Remove
+                                        </button>
                                     </div>
+                                ) : (
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={couponCode}
+                                            onChange={(e) => setCouponCode(e.target.value)}
+                                            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                            placeholder="Enter code"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={applyCoupon}
+                                            disabled={applyingCoupon}
+                                            className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                                        >
+                                            {applyingCoupon ? 'Applying...' : 'Apply'}
+                                        </button>
+                                    </div>
+                                )}
+                                {couponError && (
+                                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                                        <AlertCircle className="w-4 h-4 mr-1" />
+                                        {couponError}
+                                    </p>
+                                )}
+                            </div>
 
+                            {/* Price Summary */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                                <div className="space-y-3">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Subtotal</span>
+                                        <span className="font-medium">{formatPrice(localCartSummary.subtotal)}</span>
+                                    </div>
                                     {localCartSummary.discount_amount > 0 && (
-                                        <div className="flex justify-between text-sm text-green-600">
-                                            <span>Discount:</span>
-                                            <span>-{formatPrice(localCartSummary.discount_amount)}</span>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-600">Discount</span>
+                                            <span className="font-medium text-green-600">
+                                                -{formatPrice(localCartSummary.discount_amount)}
+                                            </span>
                                         </div>
                                     )}
-
-                                    <div className="flex justify-between text-sm text-gray-600">
-                                        <span>VAT ({localCartSummary.tax_rate}%):</span>
-                                        <span>{formatPrice(localCartSummary.tax_amount)}</span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Tax ({localCartSummary.tax_rate}%)</span>
+                                        <span className="font-medium">{formatPrice(localCartSummary.tax_amount)}</span>
                                     </div>
-
-                                    <div className="flex justify-between text-sm text-gray-600">
-                                        <span>Shipping:</span>
-                                        <span>
-                                            {localCartSummary.shipping_amount === 0 ? (
-                                                <span className="text-green-600 font-medium">FREE</span>
-                                            ) : (
-                                                formatPrice(localCartSummary.shipping_amount)
-                                            )}
-                                        </span>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">Shipping</span>
+                                        <span className="font-medium">{formatPrice(localCartSummary.shipping_amount)}</span>
                                     </div>
-                                </div>
-
-                                <div className="border-t-2 border-gray-200 pt-4 mb-6">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-lg font-bold text-gray-800">Total:</span>
-                                        <span className="text-2xl font-bold text-red-600">
-                                            {formatPrice(localCartSummary.total)}
-                                        </span>
+                                    <div className="border-t pt-3">
+                                        <div className="flex justify-between">
+                                            <span className="text-lg font-semibold">Total</span>
+                                            <span className="text-lg font-bold text-blue-600">
+                                                {formatPrice(localCartSummary.total)}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-
-                                <button
-                                    type="submit"
-                                    disabled={processing || !data.billing_address_id || !data.shipping_address_id}
-                                    className="w-full bg-red-600 text-white py-3 rounded-md hover:bg-red-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {processing ? 'Processing...' : 'Place Order'}
-                                </button>
-
-                                <div className="mt-4 text-xs text-gray-500 text-center">
-                                    By placing your order, you agree to our terms and conditions
                                 </div>
                             </div>
+
+                            {/* Place Order Button */}
+                            <button
+                                type="submit"
+                                disabled={processing}
+                                className="w-full py-4 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            >
+                                {processing ? 'Processing...' : 'Place Order'}
+                            </button>
                         </div>
                     </div>
                 </form>

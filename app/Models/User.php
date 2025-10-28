@@ -63,6 +63,11 @@ class User extends Authenticatable
         return $this->hasMany(ProductReview::class);
     }
 
+    public function serviceProvider()
+    {
+        return $this->hasOne(ServiceProvider::class);
+    }
+
     // Accessors
     public function getFullNameAttribute(): string
     {

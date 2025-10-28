@@ -4,6 +4,8 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Brand;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class BrandSeeder extends Seeder
 {
@@ -31,59 +33,37 @@ class BrandSeeder extends Seeder
                 'website' => 'https://www.idealheating.com',
                 'sort_order' => 3,
             ],
-            [
-                'name' => 'Vaillant',
-                'slug' => 'vaillant',
-                'description' => 'German heating technology manufacturer',
-                'website' => 'https://www.vaillant.co.uk',
-                'sort_order' => 4,
-            ],
-            [
-                'name' => 'Vokera',
-                'slug' => 'vokera',
-                'description' => 'Italian boiler manufacturer',
-                'website' => 'https://www.vokera.co.uk',
-                'sort_order' => 5,
-            ],
-            [
-                'name' => 'Glow-worm',
-                'slug' => 'glow-worm',
-                'description' => 'British heating specialist',
-                'website' => 'https://www.glow-worm.co.uk',
-                'sort_order' => 6,
-            ],
-            [
-                'name' => 'Potterton',
-                'slug' => 'potterton',
-                'description' => 'UK boiler and heating systems manufacturer',
-                'website' => 'https://www.potterton.co.uk',
-                'sort_order' => 7,
-            ],
-            [
-                'name' => 'Alpha',
-                'slug' => 'alpha',
-                'description' => 'UK heating equipment manufacturer',
-                'website' => 'https://www.alpha-innovation.co.uk',
-                'sort_order' => 8,
-            ],
-            [
-                'name' => 'Ferroli',
-                'slug' => 'ferroli',
-                'description' => 'Italian heating solutions provider',
-                'website' => 'https://www.ferroli.com',
-                'sort_order' => 9,
-            ],
-            [
-                'name' => 'Ariston',
-                'slug' => 'ariston',
-                'description' => 'Italian home comfort solutions',
-                'website' => 'https://www.ariston.com',
-                'sort_order' => 10,
-            ]
         ];
 
-        foreach ($brands as $brand) {
-            Brand::create($brand);
+        // Create directory if it doesn't exist
+        if (!Storage::disk('public')->exists('brands')) {
+            Storage::disk('public')->makeDirectory('brands');
+        }
+
+        foreach ($brands as $brandData) {
+            // Create image for brand
+            $imageName = Str::slug($brandData['name']) . '-' . uniqid() . '.png';
+            $imagePath = 'brands/' . $imageName;
+
+            // Create a simple 200x200 colored PNG image
+            $image = imagecreate(200, 200);
+            $bgColor = imagecolorallocate($image, rand(200, 255), rand(200, 255), rand(200, 255));
+            $textColor = imagecolorallocate($image, 50, 50, 50);
+
+            // Add text to image
+            $initials = strtoupper(substr($brandData['name'], 0, 2));
+            imagestring($image, 5, 80, 90, $initials, $textColor);
+
+            // Save image
+            ob_start();
+            imagepng($image);
+            $imageData = ob_get_clean();
+            imagedestroy($image);
+
+            Storage::disk('public')->put($imagePath, $imageData);
+
+            // Create brand with image
+            Brand::create(array_merge($brandData, ['logo' => $imagePath]));
         }
     }
 }

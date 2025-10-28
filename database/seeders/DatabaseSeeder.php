@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -15,9 +14,29 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            // Settings first
+            SettingSeeder::class,
+
+            // Users
             UserSeeder::class,
 
-            SettingSeeder::class,
+            // Location data
+            CitySeeder::class,
+            AreaSeeder::class,
+
+            // Service providers
+            ServiceProviderCategorySeeder::class,
+
+            // Product related
+            BrandSeeder::class,
+            CategorySeeder::class,
+            CompatibleModelSeeder::class,
+
+            // Products with images
+            ProductSeeder::class,
+
+            // Coupons
+            CouponSeeder::class,
         ]);
     }
 }

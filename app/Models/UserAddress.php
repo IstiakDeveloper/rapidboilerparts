@@ -12,6 +12,8 @@ class UserAddress extends Model
 
     protected $fillable = [
         'user_id',
+        'city_id',
+        'area_id',
         'type',
         'first_name',
         'last_name',
@@ -34,6 +36,16 @@ class UserAddress extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function city(): BelongsTo
+    {
+        return $this->belongsTo(City::class);
+    }
+
+    public function area(): BelongsTo
+    {
+        return $this->belongsTo(Area::class);
     }
 
     // Accessors

@@ -4,6 +4,8 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Category;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 
 class CategorySeeder extends Seeder
 {
@@ -18,7 +20,6 @@ class CategorySeeder extends Seeder
                 'children' => [
                     'Main PCB Boards',
                     'Display PCB Boards',
-                    'Ignition PCB Boards'
                 ]
             ],
             [
@@ -29,7 +30,6 @@ class CategorySeeder extends Seeder
                 'children' => [
                     '3-Way Diverter Valves',
                     'Motorized Diverter Valves',
-                    'Manual Diverter Valves'
                 ]
             ],
             [
@@ -40,81 +40,71 @@ class CategorySeeder extends Seeder
                 'children' => [
                     'Circulation Pumps',
                     'Central Heating Pumps',
-                    'Hot Water Pumps'
                 ]
             ],
-            [
-                'name' => 'Heat Exchangers',
-                'slug' => 'heat-exchangers',
-                'description' => 'Primary and secondary heat exchangers',
-                'sort_order' => 4,
-                'children' => [
-                    'Primary Heat Exchangers',
-                    'Secondary Heat Exchangers',
-                    'Plate Heat Exchangers'
-                ]
-            ],
-            [
-                'name' => 'Gas Valves',
-                'slug' => 'gas-valves',
-                'description' => 'Gas control and safety valves',
-                'sort_order' => 5,
-                'children' => [
-                    'Main Gas Valves',
-                    'Safety Gas Valves',
-                    'Modulating Gas Valves'
-                ]
-            ],
-            [
-                'name' => 'Fans & Motors',
-                'slug' => 'fans-motors',
-                'description' => 'Combustion fans and motors',
-                'sort_order' => 6,
-                'children' => [
-                    'Combustion Fans',
-                    'Fan Motors',
-                    'Centrifugal Fans'
-                ]
-            ],
-            [
-                'name' => 'Sensors & Switches',
-                'slug' => 'sensors-switches',
-                'description' => 'Temperature sensors, pressure switches, and flow switches',
-                'sort_order' => 7,
-                'children' => [
-                    'Temperature Sensors',
-                    'Pressure Switches',
-                    'Flow Switches',
-                    'Air Pressure Switches'
-                ]
-            ],
-            [
-                'name' => 'Electrodes & Ignition',
-                'slug' => 'electrodes-ignition',
-                'description' => 'Ignition electrodes and flame detection components',
-                'sort_order' => 8,
-                'children' => [
-                    'Ignition Electrodes',
-                    'Flame Detection Electrodes',
-                    'Spark Generators'
-                ]
-            ]
         ];
+
+        // Create directory if it doesn't exist
+        if (!Storage::disk('public')->exists('categories')) {
+            Storage::disk('public')->makeDirectory('categories');
+        }
 
         foreach ($categories as $categoryData) {
             $children = $categoryData['children'] ?? [];
             unset($categoryData['children']);
 
-            $category = Category::create($categoryData);
+            // Create image for parent category
+            $imageName = Str::slug($categoryData['name']) . '-' . uniqid() . '.png';
+            $imagePath = 'categories/' . $imageName;
 
-            // Create child categories
+            // Create a simple 640x480 colored PNG image
+            $image = imagecreate(640, 480);
+            $bgColor = imagecolorallocate($image, rand(150, 255), rand(150, 255), rand(150, 255));
+            $textColor = imagecolorallocate($image, 30, 30, 30);
+
+            // Add text to image
+            imagestring($image, 5, 250, 230, strtoupper(substr($categoryData['name'], 0, 15)), $textColor);
+
+            // Save image
+            ob_start();
+            imagepng($image);
+            $imageData = ob_get_clean();
+            imagedestroy($image);
+
+            Storage::disk('public')->put($imagePath, $imageData);
+
+            // Create parent category with image
+            $category = Category::create(array_merge($categoryData, ['image' => $imagePath]));
+
+            // Create child categories with images
             foreach ($children as $index => $childName) {
+                // Create image for child category
+                $childImageName = Str::slug($childName) . '-' . uniqid() . '.png';
+                $childImagePath = 'categories/' . $childImageName;
+
+                // Create a simple 640x480 colored PNG image for child
+                $childImage = imagecreate(640, 480);
+                $childBgColor = imagecolorallocate($childImage, rand(150, 255), rand(150, 255), rand(150, 255));
+                $childTextColor = imagecolorallocate($childImage, 30, 30, 30);
+
+                // Add text to child image
+                imagestring($childImage, 5, 250, 230, strtoupper(substr($childName, 0, 15)), $childTextColor);
+
+                // Save child image
+                ob_start();
+                imagepng($childImage);
+                $childImageData = ob_get_clean();
+                imagedestroy($childImage);
+
+                Storage::disk('public')->put($childImagePath, $childImageData);
+
                 Category::create([
                     'name' => $childName,
                     'slug' => str($childName)->slug(),
                     'parent_id' => $category->id,
                     'sort_order' => $index + 1,
                     'is_active' => true,
+                    'image' => $childImagePath,
                 ]);
             }
         }

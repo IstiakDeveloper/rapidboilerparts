@@ -8,6 +8,8 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\UserAddress;
 use App\Models\Coupon;
+use App\Models\City;
+use App\Models\Area;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -31,27 +33,12 @@ class CheckoutController extends Controller
         }
 
         $user = Auth::user();
-        $addresses = $user->addresses;
         $cartSummary = $this->calculateCartSummary($cartItems);
 
         return Inertia::render('Checkout/Index', [
             'cartItems' => $cartItems,
             'cartSummary' => $cartSummary,
-            'addresses' => $addresses->map(fn($addr) => [
-                'id' => $addr->id,
-                'type' => $addr->type,
-                'first_name' => $addr->first_name,
-                'last_name' => $addr->last_name,
-                'company' => $addr->company,
-                'address_line_1' => $addr->address_line_1,
-                'address_line_2' => $addr->address_line_2,
-                'city' => $addr->city,
-                'state' => $addr->state,
-                'postal_code' => $addr->postal_code,
-                'country' => $addr->country,
-                'phone' => $addr->phone,
-                'is_default' => $addr->is_default,
-            ]),
+            'cities' => City::active()->ordered()->get(['id', 'name', 'region']),
             'user' => [
                 'first_name' => $user->first_name,
                 'last_name' => $user->last_name,
@@ -126,13 +113,46 @@ class CheckoutController extends Controller
     }
 
     /**
+     * Get areas by city for AJAX
+     */
+    public function getAreasByCity(Request $request)
+    {
+        $request->validate([
+            'city_id' => 'required|exists:cities,id',
+        ]);
+
+        $areas = Area::where('city_id', $request->city_id)
+            ->active()
+            ->ordered()
+            ->get(['id', 'name', 'postcode']);
+
+        return response()->json([
+            'areas' => $areas,
+        ]);
+    }
+
+    /**
      * Process checkout and create order
      */
     public function processCheckout(Request $request): RedirectResponse
     {
         $request->validate([
-            'billing_address_id' => 'required|exists:user_addresses,id',
-            'shipping_address_id' => 'required|exists:user_addresses,id',
+            // Billing
+            'billing_first_name' => 'required|string|max:100',
+            'billing_last_name' => 'required|string|max:100',
+            'billing_phone' => 'required|string|max:20',
+            'billing_city_id' => 'required|exists:cities,id',
+            'billing_area_id' => 'required|exists:areas,id',
+            'billing_address' => 'required|string|max:500',
+
+            // Shipping
+            'shipping_first_name' => 'required|string|max:100',
+            'shipping_last_name' => 'required|string|max:100',
+            'shipping_phone' => 'required|string|max:20',
+            'shipping_city_id' => 'required|exists:cities,id',
+            'shipping_area_id' => 'required|exists:areas,id',
+            'shipping_address' => 'required|string|max:500',
+
             'payment_method' => 'required|in:cod,card,paypal',
             'notes' => 'nullable|string|max:500',
         ]);
@@ -144,14 +164,11 @@ class CheckoutController extends Controller
             return back()->with('error', 'Your cart is empty.');
         }
 
-        // Verify addresses belong to user
-        $billingAddress = UserAddress::where('id', $request->billing_address_id)
-            ->where('user_id', $user->id)
-            ->firstOrFail();
-
-        $shippingAddress = UserAddress::where('id', $request->shipping_address_id)
-            ->where('user_id', $user->id)
-            ->firstOrFail();
+        // Get city and area details
+        $billingCity = City::findOrFail($request->billing_city_id);
+        $billingArea = Area::findOrFail($request->billing_area_id);
+        $shippingCity = City::findOrFail($request->shipping_city_id);
+        $shippingArea = Area::findOrFail($request->shipping_area_id);
 
         // Check stock availability
         foreach ($cartItems as $item) {
@@ -178,28 +195,26 @@ class CheckoutController extends Controller
                 'payment_status' => $request->payment_method === 'cod' ? 'pending' : 'pending',
                 'payment_method' => $request->payment_method,
                 'billing_address' => [
-                    'first_name' => $billingAddress->first_name,
-                    'last_name' => $billingAddress->last_name,
-                    'company' => $billingAddress->company,
-                    'address_line_1' => $billingAddress->address_line_1,
-                    'address_line_2' => $billingAddress->address_line_2,
-                    'city' => $billingAddress->city,
-                    'state' => $billingAddress->state,
-                    'postal_code' => $billingAddress->postal_code,
-                    'country' => $billingAddress->country,
-                    'phone' => $billingAddress->phone,
+                    'first_name' => $request->billing_first_name,
+                    'last_name' => $request->billing_last_name,
+                    'phone' => $request->billing_phone,
+                    'address' => $request->billing_address,
+                    'city_id' => $billingCity->id,
+                    'city' => $billingCity->name,
+                    'area_id' => $billingArea->id,
+                    'area' => $billingArea->name,
+                    'postcode' => $billingArea->postcode,
                 ],
                 'shipping_address' => [
-                    'first_name' => $shippingAddress->first_name,
-                    'last_name' => $shippingAddress->last_name,
-                    'company' => $shippingAddress->company,
-                    'address_line_1' => $shippingAddress->address_line_1,
-                    'address_line_2' => $shippingAddress->address_line_2,
-                    'city' => $shippingAddress->city,
-                    'state' => $shippingAddress->state,
-                    'postal_code' => $shippingAddress->postal_code,
-                    'country' => $shippingAddress->country,
-                    'phone' => $shippingAddress->phone,
+                    'first_name' => $request->shipping_first_name,
+                    'last_name' => $request->shipping_last_name,
+                    'phone' => $request->shipping_phone,
+                    'address' => $request->shipping_address,
+                    'city_id' => $shippingCity->id,
+                    'city' => $shippingCity->name,
+                    'area_id' => $shippingArea->id,
+                    'area' => $shippingArea->name,
+                    'postcode' => $shippingArea->postcode,
                 ],
                 'notes' => $request->notes,
             ]);
