@@ -15,31 +15,22 @@ class Cart extends Model
         'session_id',
         'product_id',
         'quantity',
+        'selected_services',
+        'services_total',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'selected_services' => 'array',
+        'services_total' => 'decimal:2',
     ];
 
-    public function getServicesTotalAttribute(): float
-    {
-        if (!$this->selected_services || !is_array($this->selected_services)) {
-            return 0;
-        }
 
-        $total = 0;
-        foreach ($this->selected_services as $serviceId) {
-            $total += $this->product->getServicePrice($serviceId);
-        }
-
-        return $total;
-    }
-
-    public function getTotalPriceAttribute()
+     public function getTotalPriceAttribute()
     {
         $productTotal = $this->product->final_price * $this->quantity;
-        $servicesTotal = $this->services_total;
+        // Use the stored services_total from database
+        $servicesTotal = $this->attributes['services_total'] ?? 0;
 
         return $productTotal + $servicesTotal;
     }

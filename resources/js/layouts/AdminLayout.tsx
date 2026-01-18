@@ -142,6 +142,11 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                     name: 'Product Services',
                     href: '/admin/product-services',
                     icon: Settings,
+                },
+                {
+                    name: 'Service Providers',
+                    href: '/admin/service-management',
+                    icon: User,
                 }
             ]
         },

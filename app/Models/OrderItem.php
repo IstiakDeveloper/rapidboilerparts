@@ -18,12 +18,16 @@ class OrderItem extends Model
         'quantity',
         'unit_price',
         'total_price',
+        'selected_services',
+        'services_total',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'selected_services' => 'array',
+        'services_total' => 'decimal:2',
     ];
 
     // Relationships

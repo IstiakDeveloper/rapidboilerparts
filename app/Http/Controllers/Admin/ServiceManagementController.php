@@ -82,10 +82,12 @@ class ServiceManagementController extends Controller
         return Inertia::render('Admin/ServiceManagement/Create', [
             'categories' => ServiceProviderCategory::active()->ordered()->get(),
             'cities' => City::active()->ordered()->get(),
-            'users' => User::where('user_type', 'customer')
+            'users' => User::where('user_type', 'service_provider')
                 ->whereDoesntHave('serviceProvider')
                 ->select('id', 'first_name', 'last_name', 'email')
+                ->orderBy('first_name')
                 ->get(),
+            'productServices' => \App\Models\ProductService::active()->ordered()->get(['id', 'name', 'price', 'type']),
         ]);
     }
 
@@ -120,6 +122,13 @@ class ServiceManagementController extends Controller
             'max_daily_orders' => 'required|integer|min:1|max:50',
             'is_active' => 'boolean',
             'is_verified' => 'boolean',
+
+            // Service assignments
+            'services' => 'nullable|array',
+            'services.*.service_id' => 'required|exists:product_services,id',
+            'services.*.custom_price' => 'nullable|numeric|min:0',
+            'services.*.experience_level' => 'nullable|in:beginner,intermediate,expert',
+            'services.*.is_active' => 'boolean',
         ]);
 
         DB::beginTransaction();
@@ -177,7 +186,24 @@ class ServiceManagementController extends Controller
             unset($validated['new_area_name']);
             unset($validated['new_area_postcode']);
 
-            ServiceProvider::create($validated);
+            // Extract services data before creating provider
+            $servicesData = $validated['services'] ?? [];
+            unset($validated['services']);
+
+            $serviceProvider = ServiceProvider::create($validated);
+
+            // Attach services with custom pricing
+            if (!empty($servicesData)) {
+                $syncData = [];
+                foreach ($servicesData as $service) {
+                    $syncData[$service['service_id']] = [
+                        'custom_price' => $service['custom_price'] ?? null,
+                        'experience_level' => $service['experience_level'] ?? 'intermediate',
+                        'is_active' => $service['is_active'] ?? true,
+                    ];
+                }
+                $serviceProvider->services()->sync($syncData);
+            }
 
             DB::commit();
 
@@ -200,6 +226,7 @@ class ServiceManagementController extends Controller
             'category',
             'city',
             'area',
+            'services',
             'orders' => function ($query) {
                 $query->latest()->limit(10);
             }
@@ -215,19 +242,32 @@ class ServiceManagementController extends Controller
      */
     public function edit(ServiceProvider $serviceManagement): Response
     {
-        $serviceManagement->load(['user', 'category', 'city', 'area']);
+        $serviceManagement->load(['user', 'category', 'city', 'area', 'services']);
+
+        // Format assigned services for frontend
+        $assignedServices = $serviceManagement->services->map(function ($service) {
+            return [
+                'service_id' => $service->id,
+                'custom_price' => $service->pivot->custom_price,
+                'experience_level' => $service->pivot->experience_level,
+                'is_active' => $service->pivot->is_active,
+            ];
+        })->toArray();
 
         return Inertia::render('Admin/ServiceManagement/Edit', [
             'serviceProvider' => $serviceManagement,
             'categories' => ServiceProviderCategory::active()->ordered()->get(),
             'cities' => City::active()->ordered()->get(),
-            'users' => User::where('user_type', 'customer')
+            'users' => User::where('user_type', 'service_provider')
                 ->where(function ($q) use ($serviceManagement) {
                     $q->whereDoesntHave('serviceProvider')
                         ->orWhere('id', $serviceManagement->user_id);
                 })
                 ->select('id', 'first_name', 'last_name', 'email')
+                ->orderBy('first_name')
                 ->get(),
+            'productServices' => \App\Models\ProductService::active()->ordered()->get(['id', 'name', 'price', 'type']),
+            'assignedServices' => $assignedServices,
         ]);
     }
 
@@ -261,6 +301,13 @@ class ServiceManagementController extends Controller
             'availability_status' => 'required|in:available,busy,offline',
             'is_active' => 'boolean',
             'is_verified' => 'boolean',
+
+            // Service assignments
+            'services' => 'nullable|array',
+            'services.*.service_id' => 'required|exists:product_services,id',
+            'services.*.custom_price' => 'nullable|numeric|min:0',
+            'services.*.experience_level' => 'nullable|in:beginner,intermediate,expert',
+            'services.*.is_active' => 'boolean',
         ]);
 
         DB::beginTransaction();
@@ -314,7 +361,27 @@ class ServiceManagementController extends Controller
             unset($validated['new_area_name']);
             unset($validated['new_area_postcode']);
 
+            // Extract services data before updating
+            $servicesData = $validated['services'] ?? [];
+            unset($validated['services']);
+
             $serviceManagement->update($validated);
+
+            // Sync services with custom pricing
+            if (!empty($servicesData)) {
+                $syncData = [];
+                foreach ($servicesData as $service) {
+                    $syncData[$service['service_id']] = [
+                        'custom_price' => $service['custom_price'] ?? null,
+                        'experience_level' => $service['experience_level'] ?? 'intermediate',
+                        'is_active' => $service['is_active'] ?? true,
+                    ];
+                }
+                $serviceManagement->services()->sync($syncData);
+            } else {
+                // If no services provided, detach all
+                $serviceManagement->services()->sync([]);
+            }
 
             DB::commit();
 
@@ -443,4 +510,141 @@ class ServiceManagementController extends Controller
             'cities' => City::active()->ordered()->get()
         ]);
     }
+
+    /**
+     * Manage services for a specific service provider
+     */
+    public function manageServices(ServiceProvider $serviceManagement): Response
+    {
+        $serviceManagement->load([
+            'services' => function ($query) {
+                $query->with('serviceProviders');
+            }
+        ]);
+
+        $allServices = \App\Models\ProductService::active()->ordered()->get();
+        $assignedServiceIds = $serviceManagement->services->pluck('id')->toArray();
+
+        return Inertia::render('Admin/ServiceManagement/ManageServices', [
+            'serviceProvider' => $serviceManagement,
+            'allServices' => $allServices,
+            'assignedServices' => $serviceManagement->services,
+            'assignedServiceIds' => $assignedServiceIds,
+        ]);
+    }
+
+    /**
+     * Update services for a service provider
+     */
+    public function updateServices(Request $request, ServiceProvider $serviceManagement): RedirectResponse
+    {
+        $validated = $request->validate([
+            'services' => 'required|array',
+            'services.*.service_id' => 'required|exists:product_services,id',
+            'services.*.custom_price' => 'nullable|numeric|min:0',
+            'services.*.experience_level' => 'required|in:beginner,intermediate,expert',
+            'services.*.is_active' => 'boolean',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // Detach all existing services
+            $serviceManagement->services()->detach();
+
+            // Attach new services with pivot data
+            foreach ($validated['services'] as $serviceData) {
+                $serviceManagement->services()->attach($serviceData['service_id'], [
+                    'custom_price' => $serviceData['custom_price'] ?? null,
+                    'experience_level' => $serviceData['experience_level'],
+                    'is_active' => $serviceData['is_active'] ?? true,
+                ]);
+            }
+
+            DB::commit();
+
+            return back()->with('success', 'Services updated successfully.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withErrors(['error' => 'Failed to update services: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Get service provider's schedule/availability
+     */
+    public function getSchedule(Request $request, ServiceProvider $serviceManagement)
+    {
+        // Check if it's an AJAX request
+        if ($request->wantsJson() || $request->ajax()) {
+            $startDate = $request->input('start_date', now()->format('Y-m-d'));
+            $endDate = $request->input('end_date', now()->addDays(30)->format('Y-m-d'));
+
+            $schedules = $serviceManagement->schedules()
+                ->whereBetween('service_date', [$startDate, $endDate])
+                ->with(['order.user'])
+                ->get();
+
+            return response()->json([
+                'schedules' => $schedules,
+                'working_hours' => $serviceManagement->working_hours,
+                'working_days' => $serviceManagement->working_days,
+            ]);
+        }
+
+        // Return Inertia view for regular page load
+        $serviceManagement->load(['user', 'category']);
+
+        return Inertia::render('Admin/ServiceManagement/ScheduleView', [
+            'serviceProvider' => $serviceManagement,
+        ]);
+    }
+
+    /**
+     * Get working hours page for a service provider
+     */
+    public function getWorkingHours(ServiceProvider $serviceManagement): Response
+    {
+        $serviceManagement->load(['user', 'category']);
+
+        return Inertia::render('Admin/ServiceManagement/WorkingHours', [
+            'serviceProvider' => $serviceManagement,
+        ]);
+    }    /**
+     * Update working hours for service provider
+     */
+    public function updateWorkingHours(Request $request, ServiceProvider $serviceManagement): RedirectResponse
+    {
+        $validated = $request->validate([
+            'working_hours' => 'required|array',
+            'working_hours.*.day' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'working_hours.*.available' => 'required|boolean',
+            'working_hours.*.start' => 'nullable|required_if:working_hours.*.available,true|date_format:H:i',
+            'working_hours.*.end' => 'nullable|required_if:working_hours.*.available,true|date_format:H:i|after:working_hours.*.start',
+            'working_days' => 'required|array',
+            'working_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'avg_service_duration' => 'required|integer|min:15|max:480',
+            'min_advance_booking_hours' => 'required|integer|min:1|max:168',
+        ]);
+
+        // Format working hours
+        $formattedHours = [];
+        foreach ($validated['working_hours'] as $dayData) {
+            $formattedHours[$dayData['day']] = [
+                'available' => $dayData['available'],
+                'start' => $dayData['start'] ?? '09:00',
+                'end' => $dayData['end'] ?? '18:00',
+            ];
+        }
+
+        $serviceManagement->update([
+            'working_hours' => $formattedHours,
+            'working_days' => $validated['working_days'],
+            'avg_service_duration' => $validated['avg_service_duration'],
+            'min_advance_booking_hours' => $validated['min_advance_booking_hours'],
+        ]);
+
+        return back()->with('success', 'Working hours updated successfully.');
+    }
 }
+

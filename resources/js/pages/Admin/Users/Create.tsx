@@ -229,6 +229,7 @@ export default function Create() {
                     }`}
                   >
                     <option value="customer">Customer</option>
+                    <option value="service_provider">Service Provider</option>
                     <option value="manager">Manager</option>
                     <option value="admin">Admin</option>
                   </select>
@@ -237,6 +238,7 @@ export default function Create() {
                   )}
                   <div className="mt-2 text-xs text-gray-500 space-y-1">
                     <div><strong>Customer:</strong> Can place orders and manage account</div>
+                    <div><strong>Service Provider:</strong> Can provide installation/delivery services</div>
                     <div><strong>Manager:</strong> Can manage products and orders</div>
                     <div><strong>Admin:</strong> Full system access</div>
                   </div>

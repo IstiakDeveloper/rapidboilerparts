@@ -26,6 +26,20 @@ interface User {
     email: string;
 }
 
+interface ProductService {
+    id: number;
+    name: string;
+    price: number;
+    type: string;
+}
+
+interface ServiceAssignment {
+    service_id: number;
+    custom_price: number | null;
+    experience_level: string;
+    is_active: boolean;
+}
+
 interface ServiceProvider {
     id: number;
     user_id: number;
@@ -51,9 +65,11 @@ interface Props {
     categories: Category[];
     cities: City[];
     users: User[];
+    productServices: ProductService[];
+    assignedServices: ServiceAssignment[];
 }
 
-export default function Edit({ serviceProvider, categories, cities, users }: Props) {
+export default function Edit({ serviceProvider, categories, cities, users, productServices, assignedServices }: Props) {
     const { data, setData, put, processing, errors } = useForm({
         user_id: serviceProvider.user_id.toString(),
 
@@ -78,8 +94,10 @@ export default function Edit({ serviceProvider, categories, cities, users }: Pro
         contact_number: serviceProvider.contact_number || '',
         email: serviceProvider.email || '',
         max_daily_orders: serviceProvider.max_daily_orders.toString(),
+        availability_status: 'available',
         is_active: serviceProvider.is_active,
         is_verified: serviceProvider.is_verified,
+        services: assignedServices || [] as ServiceAssignment[],
     });
 
     const [areas, setAreas] = useState<Area[]>([]);
@@ -110,6 +128,38 @@ export default function Edit({ serviceProvider, categories, cities, users }: Pro
             setAreas([]);
         }
     }, [data.city_id, showNewCity]);
+
+    // Service management functions - Checkbox based
+    const isServiceSelected = (serviceId: number) => {
+        return data.services.some(s => s.service_id === serviceId);
+    };
+
+    const toggleService = (serviceId: number) => {
+        if (isServiceSelected(serviceId)) {
+            // Remove service
+            setData('services', data.services.filter(s => s.service_id !== serviceId));
+        } else {
+            // Add service with defaults
+            setData('services', [...data.services, {
+                service_id: serviceId,
+                custom_price: null,
+                experience_level: 'intermediate',
+                is_active: true,
+            }]);
+        }
+    };
+
+    const updateServiceField = (serviceId: number, field: keyof ServiceAssignment, value: any) => {
+        const newServices = data.services.map(s =>
+            s.service_id === serviceId ? { ...s, [field]: value } : s
+        );
+        setData('services', newServices);
+    };
+
+    const getServiceData = (serviceId: number) => {
+        return data.services.find(s => s.service_id === serviceId);
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -534,6 +584,176 @@ export default function Edit({ serviceProvider, categories, cities, users }: Pro
                                         </label>
                                     </div>
                                 </div>
+                            </div>
+
+                            {/* Service Assignments - Professional Checkbox UI */}
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-base font-semibold text-gray-900 mb-1">Service Assignment</h3>
+                                    <p className="text-sm text-gray-600">
+                                        Select services this provider can perform. Set custom pricing and experience level for each service.
+                                    </p>
+                                </div>
+
+                                {productServices.length === 0 ? (
+                                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
+                                        <p className="text-gray-500 text-sm">No services available. Please create product services first.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {productServices.map((service) => {
+                                            const isSelected = isServiceSelected(service.id);
+                                            const serviceData = getServiceData(service.id);
+
+                                            return (
+                                                <div
+                                                    key={service.id}
+                                                    className={`border-2 rounded-xl transition-all ${
+                                                        isSelected
+                                                            ? 'border-blue-500 bg-blue-50/50 shadow-sm'
+                                                            : 'border-gray-200 bg-white hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    {/* Service Header - Checkbox */}
+                                                    <div className="p-4">
+                                                        <label className="flex items-start gap-4 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isSelected}
+                                                                onChange={() => toggleService(service.id)}
+                                                                className="mt-1 w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="flex items-start justify-between gap-4">
+                                                                    <div className="flex-1">
+                                                                        <h4 className="text-base font-semibold text-gray-900 mb-1">
+                                                                            {service.name}
+                                                                        </h4>
+                                                                        <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                                                            <span className="inline-flex items-center gap-1">
+                                                                                <Tag className="w-4 h-4" />
+                                                                                <span className="capitalize">{service.type}</span>
+                                                                            </span>
+                                                                            <span className="inline-flex items-center gap-1 font-medium text-gray-900">
+                                                                                <DollarSign className="w-4 h-4" />
+                                                                                Customer Price: £{parseFloat(service.price).toFixed(2)}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    {isSelected && (
+                                                                        <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                                                                            <CheckCircle className="w-3 h-3 mr-1" />
+                                                                            Selected
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </label>
+                                                    </div>
+
+                                                    {/* Service Details - Expandable when selected */}
+                                                    {isSelected && serviceData && (
+                                                        <div className="px-4 pb-4 pt-2 border-t border-blue-200">
+                                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                                {/* Provider Payment */}
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                        Provider Payment (£) *
+                                                                    </label>
+                                                                    <div className="relative">
+                                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">£</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            step="0.01"
+                                                                            min="0"
+                                                                            value={serviceData.custom_price ?? ''}
+                                                                            onChange={(e) => updateServiceField(service.id, 'custom_price', e.target.value ? parseFloat(e.target.value) : null)}
+                                                                            className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                                            placeholder={service.price.toString()}
+                                                                        />
+                                                                    </div>
+                                                                    <p className="mt-1 text-xs text-gray-500">
+                                                                        Amount paid to provider
+                                                                    </p>
+                                                                    {serviceData.custom_price && (
+                                                                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                                                                            <p className="text-xs text-green-700 font-medium">
+                                                                                Company Profit: £{(parseFloat(service.price) - serviceData.custom_price).toFixed(2)}
+                                                                            </p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Experience Level */}
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                        Experience Level
+                                                                    </label>
+                                                                    <select
+                                                                        value={serviceData.experience_level}
+                                                                        onChange={(e) => updateServiceField(service.id, 'experience_level', e.target.value)}
+                                                                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                                    >
+                                                                        <option value="beginner">🟢 Beginner</option>
+                                                                        <option value="intermediate">🟡 Intermediate</option>
+                                                                        <option value="expert">🔴 Expert</option>
+                                                                    </select>
+                                                                    <p className="mt-1 text-xs text-gray-500">
+                                                                        Provider's skill level
+                                                                    </p>
+                                                                </div>
+
+                                                                {/* Active Status */}
+                                                                <div>
+                                                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                                        Service Status
+                                                                    </label>
+                                                                    <div className="flex items-center h-[42px] px-4 py-2.5 border border-gray-300 rounded-lg bg-white">
+                                                                        <label className="flex items-center gap-3 cursor-pointer">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={serviceData.is_active}
+                                                                                onChange={(e) => updateServiceField(service.id, 'is_active', e.target.checked)}
+                                                                                className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                                                            />
+                                                                            <span className="text-sm text-gray-700 font-medium">
+                                                                                {serviceData.is_active ? 'Active' : 'Inactive'}
+                                                                            </span>
+                                                                        </label>
+                                                                    </div>
+                                                                    <p className="mt-1 text-xs text-gray-500">
+                                                                        Enable/disable this service
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Summary */}
+                                {data.services.length > 0 && (
+                                    <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="w-5 h-5 text-blue-600" />
+                                                <span className="text-sm font-medium text-blue-900">
+                                                    {data.services.length} service{data.services.length !== 1 ? 's' : ''} selected
+                                                </span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setData('services', [])}
+                                                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                            >
+                                                Clear all
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 

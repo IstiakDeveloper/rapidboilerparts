@@ -10,6 +10,14 @@ import {
 interface CartItem {
     id: number;
     quantity: number;
+    selected_services: {
+        id: number;
+        name: string;
+        price: number;
+        is_free: boolean;
+    }[];
+    services_total: number;
+    item_total: number;
     product: {
         id: number;
         name: string;
@@ -328,7 +336,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         return `${symbol}${price.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
-    const cartTotal = cartItems.reduce((sum, item) => sum + (item.product.final_price * item.quantity), 0);
+    const cartTotal = cartItems.reduce((sum, item) => {
+        const productTotal = item.product.final_price * item.quantity;
+        const servicesTotal = item.services_total || 0;
+        return sum + productTotal + servicesTotal;
+    }, 0);
 
     const ToastIcon = ({ type }: { type: string }) => {
         switch (type) {
@@ -741,6 +753,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                                                     {formatPrice(item.product.final_price)}
                                                 </p>
 
+                                                {/* Selected Services */}
+                                                {item.selected_services && item.selected_services.length > 0 && (
+                                                    <div className="mb-2 p-2 bg-blue-50 rounded text-xs">
+                                                        <p className="font-medium text-blue-800 mb-1">Services:</p>
+                                                        {item.selected_services.map((service) => (
+                                                            <div key={service.id} className="flex justify-between text-blue-700">
+                                                                <span>• {service.name}</span>
+                                                                <span className="font-medium">
+                                                                    {service.is_free ? 'FREE' : formatPrice(service.price)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2">
                                                         <button
@@ -793,10 +820,24 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                         {cartItems.length > 0 && (
                             <div className="border-t border-gray-200 p-4 space-y-3 bg-gray-50">
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>Subtotal:</span>
-                                        <span className="font-medium">{formatPrice(cartTotal)}</span>
-                                    </div>
+                                    {(() => {
+                                        const productTotal = cartItems.reduce((sum, item) => sum + (item.product.final_price * item.quantity), 0);
+                                        const servicesTotal = cartItems.reduce((sum, item) => sum + (item.services_total || 0), 0);
+                                        return (
+                                            <>
+                                                <div className="flex justify-between text-gray-600">
+                                                    <span>Products:</span>
+                                                    <span className="font-medium">{formatPrice(productTotal)}</span>
+                                                </div>
+                                                {servicesTotal > 0 && (
+                                                    <div className="flex justify-between text-blue-600">
+                                                        <span>Services:</span>
+                                                        <span className="font-medium">{formatPrice(servicesTotal)}</span>
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                     <div className="flex justify-between text-gray-600">
                                         <span>Shipping:</span>
                                         <span className="font-medium">

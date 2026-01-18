@@ -10,6 +10,8 @@ use App\Models\UserAddress;
 use App\Models\Coupon;
 use App\Models\City;
 use App\Models\Area;
+use App\Models\ServiceProvider;
+use App\Services\ServiceProviderAssignmentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -136,6 +138,15 @@ class CheckoutController extends Controller
      */
     public function processCheckout(Request $request): RedirectResponse
     {
+        // Log incoming request data for debugging
+        \Log::info('=== Checkout Request Data ===', [
+            'service_date' => $request->service_date,
+            'service_time' => $request->service_time,
+            'service_provider_id' => $request->service_provider_id,
+            'service_instructions' => $request->service_instructions,
+            'all_data' => $request->all(),
+        ]);
+
         $request->validate([
             // Billing
             'billing_first_name' => 'required|string|max:100',
@@ -155,6 +166,17 @@ class CheckoutController extends Controller
 
             'payment_method' => 'required|in:cod,card,paypal',
             'notes' => 'nullable|string|max:500',
+            'cart_services' => 'nullable|array',
+            'cart_services.*.*.service_id' => 'required_with:cart_services|exists:product_services,id',
+            'cart_services.*.*.service_date' => 'required_with:cart_services|date|after_or_equal:today',
+            'cart_services.*.*.service_time' => 'required_with:cart_services|string',
+            'cart_services.*.*.service_instructions' => 'nullable|string|max:500',
+
+            // Service scheduling
+            'service_date' => 'nullable|date|after_or_equal:today',
+            'service_time' => 'nullable|string',
+            'service_provider_id' => 'nullable|exists:service_providers,id',
+            'service_instructions' => 'nullable|string|max:500',
         ]);
 
         $user = Auth::user();
@@ -182,6 +204,23 @@ class CheckoutController extends Controller
 
         try {
             $cartSummary = $this->calculateCartSummary($cartItems);
+
+            // Process services from cart items (already loaded in getCartItems)
+            $processedServices = [];
+            foreach ($cartItems as $item) {
+                if (!empty($item['selected_services'])) {
+                    // Convert services to the format expected by OrderItem
+                    $services = [];
+                    foreach ($item['selected_services'] as $service) {
+                        $services[] = [
+                            'service_id' => $service['id'],
+                            'service_name' => $service['name'],
+                            'estimated_cost' => $service['price'],
+                        ];
+                    }
+                    $processedServices[$item['id']] = $services;
+                }
+            }
 
             // Create order
             $order = Order::create([
@@ -219,9 +258,23 @@ class CheckoutController extends Controller
                 'notes' => $request->notes,
             ]);
 
-            // Create order items
+            // Create order items and process services
             foreach ($cartItems as $item) {
                 $product = $item['product_model'];
+                $cartItemId = $item['id'];
+
+                // Get services for this cart item
+                $itemServices = $processedServices[$cartItemId] ?? [];
+
+                // Calculate services total
+                $servicesTotal = collect($itemServices)->sum('estimated_cost');
+
+                \Log::info('Creating Order Item', [
+                    'product_name' => $product->name,
+                    'cart_item_id' => $cartItemId,
+                    'selected_services' => $itemServices,
+                    'services_total' => $servicesTotal,
+                ]);
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -231,8 +284,8 @@ class CheckoutController extends Controller
                     'quantity' => $item['quantity'],
                     'unit_price' => $product->final_price,
                     'total_price' => $product->final_price * $item['quantity'],
-                    'selected_services' => $item['selected_services'],
-                    'services_total' => $item['services_total'],
+                    'selected_services' => $itemServices,
+                    'services_total' => $servicesTotal,
                 ]);
 
                 // Reduce stock
@@ -241,6 +294,52 @@ class CheckoutController extends Controller
                 // Update stock status if needed
                 if ($product->stock_quantity <= 0) {
                     $product->update(['in_stock' => false]);
+                }
+            }
+
+            // Handle service scheduling and provider assignment
+            if ($request->service_date && $request->service_time) {
+                \Log::info('Updating Order with Service Schedule', [
+                    'order_id' => $order->id,
+                    'service_date' => $request->service_date,
+                    'service_time' => $request->service_time,
+                    'service_provider_id' => $request->service_provider_id,
+                    'service_instructions' => $request->service_instructions,
+                ]);
+
+                // Update order with service scheduling info
+                $order->update([
+                    'preferred_service_date' => $request->service_date,
+                    'service_time_slot' => $request->service_time,
+                    'service_instructions' => $request->service_instructions,
+                ]);
+
+                // Assign the selected service provider
+                if ($request->service_provider_id) {
+                    \Log::info('Assigning Service Provider', [
+                        'order_id' => $order->id,
+                        'service_provider_id' => $request->service_provider_id,
+                    ]);
+
+                    $order->update([
+                        'service_provider_id' => $request->service_provider_id,
+                        'assigned_at' => now(),
+                    ]);
+                } else {
+                    // Fallback to auto-assignment if no provider selected
+                    try {
+                        $assignmentService = app(ServiceProviderAssignmentService::class);
+                        $provider = $assignmentService->assignToOrder($order);
+
+                        if ($provider) {
+                            $order->update([
+                                'service_provider_id' => $provider->id,
+                                'assigned_at' => now(),
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning('Failed to auto-assign service provider: ' . $e->getMessage());
+                    }
                 }
             }
 
@@ -270,6 +369,10 @@ class CheckoutController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            \Log::error('=== Order Processing Failed ===', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return back()->with('error', 'Failed to process order. Please try again.');
         }
     }
@@ -309,37 +412,39 @@ class CheckoutController extends Controller
                 $product = $cartItem->product;
                 $primaryImage = $product->images->where('is_primary', true)->first();
 
-                // Get selected services
+                // Get selected services from cart's JSON data
                 $selectedServices = [];
                 $servicesTotal = 0;
 
-                if (!empty($cartItem->selected_services)) {
-                    $services = DB::table('product_service_assignments')
-                        ->join('product_services', 'product_service_assignments.product_service_id', '=', 'product_services.id')
-                        ->where('product_service_assignments.product_id', $product->id)
-                        ->whereIn('product_services.id', $cartItem->selected_services)
-                        ->select(
-                            'product_services.id',
-                            'product_services.name',
-                            'product_services.price as default_price',
-                            'product_service_assignments.custom_price',
-                            'product_service_assignments.is_free as assignment_is_free',
-                            'product_services.is_free as service_is_free'
-                        )
-                        ->get();
+                // Get the raw selected_services value to avoid accessor issues
+                $rawServices = $cartItem->getAttributeValue('selected_services');
 
-                    foreach ($services as $service) {
-                        $finalPrice = $service->custom_price ?? $service->default_price;
-                        $isFree = $service->assignment_is_free || $service->service_is_free;
-                        $price = $isFree ? 0 : (float) $finalPrice;
+                if (!empty($rawServices) && is_array($rawServices)) {
+                    // Check if it's array of IDs or array of objects
+                    $firstItem = $rawServices[0] ?? null;
 
-                        $selectedServices[] = [
-                            'id' => $service->id,
-                            'name' => $service->name,
-                            'price' => $price,
-                        ];
+                    if (is_numeric($firstItem)) {
+                        // It's array of service IDs - fetch service details from database
+                        $services = \App\Models\ProductService::whereIn('id', $rawServices)->get();
 
-                        $servicesTotal += $price;
+                        foreach ($services as $service) {
+                            $selectedServices[] = [
+                                'id' => $service->id,
+                                'name' => $service->name,
+                                'price' => (float) $service->estimated_cost,
+                            ];
+                            $servicesTotal += (float) $service->estimated_cost;
+                        }
+                    } else {
+                        // It's array of objects with service_id, service_name, estimated_cost
+                        foreach ($rawServices as $serviceData) {
+                            $selectedServices[] = [
+                                'id' => $serviceData['service_id'],
+                                'name' => $serviceData['service_name'],
+                                'price' => (float) $serviceData['estimated_cost'],
+                            ];
+                            $servicesTotal += (float) $serviceData['estimated_cost'];
+                        }
                     }
                 }
 
@@ -369,10 +474,12 @@ class CheckoutController extends Controller
     private function calculateCartSummary($cartItems)
     {
         $subtotal = 0;
+        $totalServicesAmount = 0;
 
         foreach ($cartItems as $item) {
-            $itemTotal = ($item['product']['final_price'] * $item['quantity']) + $item['services_total'];
-            $subtotal += $itemTotal;
+            $productTotal = $item['product']['final_price'] * $item['quantity'];
+            $subtotal += $productTotal;
+            $totalServicesAmount += $item['services_total'];
         }
 
         $discountAmount = 0;
@@ -382,18 +489,76 @@ class CheckoutController extends Controller
 
         $subtotalAfterDiscount = $subtotal - $discountAmount;
         $taxRate = 0.20;
-        $taxAmount = $subtotalAfterDiscount * $taxRate;
-        $shippingAmount = $subtotal > 50 ? 0 : 4.99;
-        $total = $subtotalAfterDiscount + $taxAmount + $shippingAmount;
+        $taxAmount = ($subtotalAfterDiscount + $totalServicesAmount) * $taxRate;
+
+        // Delivery charge - Free for now (will be area-based in future)
+        // When services are selected, delivery is auto-handled by service provider
+        $shippingAmount = 0.00;
+
+        $total = $subtotalAfterDiscount + $totalServicesAmount + $taxAmount + $shippingAmount;
 
         return [
             'subtotal' => round($subtotal, 2),
+            'total_services_amount' => round($totalServicesAmount, 2),
             'discount_amount' => round($discountAmount, 2),
-            'tax_rate' => $taxRate * 100,
+            'tax_rate' => $taxRate,
             'tax_amount' => round($taxAmount, 2),
             'shipping_amount' => round($shippingAmount, 2),
             'total' => round($total, 2),
             'applied_coupon' => Session::get('applied_coupon'),
         ];
+    }
+
+    /**
+     * Check service provider availability
+     */
+    public function checkServiceAvailability(Request $request)
+    {
+        $request->validate([
+            'service_ids' => 'required|array',
+            'service_ids.*' => 'exists:product_services,id',
+            'date' => 'required|date|after_or_equal:today',
+            'time_slot' => 'required|string',
+            'area_id' => 'nullable|exists:areas,id',
+        ]);
+
+        \Log::info('=== Checking Service Provider Availability ===', [
+            'service_ids' => $request->service_ids,
+            'date' => $request->date,
+            'time_slot' => $request->time_slot,
+            'area_id' => $request->area_id,
+        ]);
+
+        // Get available service providers who can handle these services
+        $query = ServiceProvider::where('is_active', true)
+            ->where('is_verified', true)
+            ->whereHas('services', function ($q) use ($request) {
+                $q->whereIn('product_services.id', $request->service_ids);
+            });
+
+        // Filter by area if provided
+        if ($request->area_id) {
+            $query->where('area_id', $request->area_id);
+        }
+
+        $availableProviders = $query->with(['user:id,first_name,last_name'])
+            ->get()
+            ->map(function ($provider) {
+                return [
+                    'id' => $provider->id,
+                    'name' => $provider->user->first_name . ' ' . $provider->user->last_name,
+                    'rating' => $provider->rating ?? 5.0,
+                    'completed_services' => $provider->total_jobs_completed ?? 0,
+                ];
+            });
+
+        \Log::info('Available Providers Found:', [
+            'count' => $availableProviders->count(),
+            'providers' => $availableProviders->toArray(),
+        ]);
+
+        return response()->json([
+            'available_providers' => $availableProviders,
+        ]);
     }
 }

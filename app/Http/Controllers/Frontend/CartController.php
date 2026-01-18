@@ -43,6 +43,10 @@ class CartController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
+            'selected_services' => 'nullable|array',
+            'selected_services.*.service_id' => 'required_with:selected_services|exists:product_services,id',
+            'selected_services.*.service_name' => 'required_with:selected_services|string',
+            'selected_services.*.estimated_cost' => 'required_with:selected_services|numeric|min:0',
         ]);
 
         $product = Product::with('brand')->findOrFail($validated['product_id']);
@@ -80,13 +84,30 @@ class CartController extends Controller
             }
 
             $cartItem->quantity = $newQuantity;
+
+            // Update services if provided
+            if (isset($validated['selected_services'])) {
+                $servicesTotal = collect($validated['selected_services'])
+                    ->sum('estimated_cost');
+
+                $cartItem->update([
+                    'selected_services' => $validated['selected_services'],
+                    'services_total' => $servicesTotal,
+                ]);
+            }
+
             $cartItem->save();
         } else {
+            $servicesData = $validated['selected_services'] ?? [];
+            $servicesTotal = collect($servicesData)->sum('estimated_cost');
+
             $cartItem = Cart::create([
                 'user_id' => $userId,
                 'session_id' => $sessionId,
                 'product_id' => $product->id,
                 'quantity' => $validated['quantity'],
+                'selected_services' => $servicesData,
+                'services_total' => $servicesTotal,
             ]);
         }
 
@@ -350,38 +371,21 @@ class CartController extends Controller
                 $product = $cartItem->product;
                 $primaryImage = $product->images->where('is_primary', true)->first();
 
-                // Get selected services details
+                // Get selected services details from cart's selected_services JSON
                 $selectedServices = [];
                 $servicesTotal = 0;
 
-                if (!empty($cartItem->selected_services)) {
-                    $services = \DB::table('product_service_assignments')
-                        ->join('product_services', 'product_service_assignments.product_service_id', '=', 'product_services.id')
-                        ->where('product_service_assignments.product_id', $product->id)
-                        ->whereIn('product_services.id', $cartItem->selected_services)
-                        ->select(
-                            'product_services.id',
-                            'product_services.name',
-                            'product_services.price as default_price',
-                            'product_service_assignments.custom_price',
-                            'product_service_assignments.is_free as assignment_is_free',
-                            'product_services.is_free as service_is_free'
-                        )
-                        ->get();
-
-                    foreach ($services as $service) {
-                        $finalPrice = $service->custom_price ?? $service->default_price;
-                        $isFree = $service->assignment_is_free || $service->service_is_free;
-                        $price = $isFree ? 0 : (float) $finalPrice;
-
+                if (!empty($cartItem->selected_services) && is_array($cartItem->selected_services)) {
+                    // selected_services is already an array with service_id, service_name, estimated_cost
+                    foreach ($cartItem->selected_services as $serviceData) {
                         $selectedServices[] = [
-                            'id' => $service->id,
-                            'name' => $service->name,
-                            'price' => $price,
-                            'is_free' => $isFree,
+                            'id' => $serviceData['service_id'],
+                            'name' => $serviceData['service_name'],
+                            'price' => (float) $serviceData['estimated_cost'],
+                            'is_free' => (float) $serviceData['estimated_cost'] === 0.0,
                         ];
 
-                        $servicesTotal += $price;
+                        $servicesTotal += (float) $serviceData['estimated_cost'];
                     }
                 }
 

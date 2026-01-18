@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Search, Phone, Mail, MessageCircle, ShoppingCart, User, Menu, X, Filter, Star, Truck, Shield, Clock, ArrowRight, CheckCircle, Heart, Loader2 } from 'lucide-react';
 import AppLayout from '@/layouts/AppLayout';
+import ServiceSelectionModal from '@/components/ServiceSelectionModal';
 
 interface Product {
     id: number;
@@ -53,7 +54,16 @@ interface HomeProps {
         total_brands: number;
         total_categories: number;
     };
-    csrf_token: string;
+    availableServices: {
+        id: number;
+        name: string;
+        description: string | null;
+        base_price: number;
+        duration_minutes: number;
+        type: string;
+        is_optional: boolean;
+        is_free: boolean;
+    }[];
 }
 
 const Home: React.FC<HomeProps> = ({
@@ -62,9 +72,13 @@ const Home: React.FC<HomeProps> = ({
     brands,
     featuredProducts,
     latestProducts,
-    stats
+    stats,
+    availableServices
 }) => {
-    const { csrf_token } = usePage<HomeProps>().props;
+    // Get CSRF token from meta tag
+    const getCsrfToken = () => {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    };
     const [selectedBrand, setSelectedBrand] = useState('');
     const [selectedPartType, setSelectedPartType] = useState('');
     const [partNumber, setPartNumber] = useState('');
@@ -72,6 +86,8 @@ const Home: React.FC<HomeProps> = ({
     const [availablePartTypes, setAvailablePartTypes] = useState<Category[]>([]);
     const [addingToCart, setAddingToCart] = useState<number | null>(null);
     const [addingToWishlist, setAddingToWishlist] = useState<number | null>(null);
+    const [serviceModalOpen, setServiceModalOpen] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
     useEffect(() => {
         if (selectedBrand) {
@@ -105,31 +121,59 @@ const Home: React.FC<HomeProps> = ({
         router.get('/products', params);
     };
 
-    const handleAddToCart = async (productId: number) => {
-        setAddingToCart(productId);
+    const handleAddToCart = (productId: number) => {
+        console.log('=== Home: handleAddToCart called ===');
+        console.log('Product ID:', productId);
+
+        const allProducts = [...featuredProducts, ...latestProducts];
+        const product = allProducts.find(p => p.id === productId);
+
+        console.log('Product found:', product ? 'Yes' : 'No');
+        if (product) {
+            console.log('Product details:', { id: product.id, name: product.name });
+            console.log('Opening service modal...');
+            setSelectedProduct(product);
+            setServiceModalOpen(true);
+        } else {
+            console.error('Product not found in products list');
+        }
+    };
+
+    const addToCartWithServices = async (services: any[]) => {
+        if (!selectedProduct) return;
+
+        setAddingToCart(selectedProduct.id);
+        setServiceModalOpen(false);
+
         try {
             const response = await fetch('/api/cart/add', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrf_token,
+                    'X-CSRF-TOKEN': getCsrfToken(),
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: JSON.stringify({ product_id: productId, quantity: 1 }),
+                body: JSON.stringify({
+                    product_id: selectedProduct.id,
+                    quantity: 1,
+                    selected_services: services
+                }),
             });
 
             const data = await response.json();
 
             if (response.ok && data.success) {
-                // Dispatch event to update cart count in layout
                 window.dispatchEvent(new CustomEvent('cartUpdated', {
                     detail: { cartCount: data.cartCount }
                 }));
-
-                // Show toast notification
                 window.dispatchEvent(new CustomEvent('showToast', {
-                    detail: { type: 'success', message: data.message }
+                    detail: {
+                        type: 'success',
+                        message: services.length > 0
+                            ? `Added to cart with ${services.length} service(s)`
+                            : data.message
+                    }
                 }));
             } else {
                 window.dispatchEvent(new CustomEvent('showToast', {
@@ -143,6 +187,7 @@ const Home: React.FC<HomeProps> = ({
             }));
         } finally {
             setAddingToCart(null);
+            setSelectedProduct(null);
         }
     };
 
@@ -152,7 +197,7 @@ const Home: React.FC<HomeProps> = ({
             const response = await fetch(`/wishlist/add/${productId}`, {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': csrf_token,
+                    'X-CSRF-TOKEN': getCsrfToken(),
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
@@ -654,6 +699,18 @@ const Home: React.FC<HomeProps> = ({
                     </div>
                 </div>
             </section>
+
+            {/* Service Selection Modal */}
+            <ServiceSelectionModal
+                isOpen={serviceModalOpen}
+                onClose={() => {
+                    setServiceModalOpen(false);
+                    setSelectedProduct(null);
+                }}
+                productId={selectedProduct?.id || null}
+                productName={selectedProduct?.name || ''}
+                onConfirm={addToCartWithServices}
+            />
         </AppLayout>
     );
 };

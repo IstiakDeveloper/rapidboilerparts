@@ -40,7 +40,7 @@ class UserController extends Controller
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
             'filters' => $request->only('search', 'user_type', 'is_active'),
-            'user_types' => ['customer', 'admin', 'manager'],
+            'user_types' => ['customer', 'admin', 'manager', 'service_provider'],
         ]);
     }
 
@@ -57,7 +57,7 @@ class UserController extends Controller
             'email' => 'required|email|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'phone' => 'nullable|string',
-            'user_type' => 'required|in:customer,admin,manager',
+            'user_type' => 'required|in:customer,admin,manager,service_provider',
             'is_active' => 'boolean',
         ]);
 
@@ -94,7 +94,7 @@ class UserController extends Controller
             'email' => ['required', 'email', Rule::unique('users')->ignore($user->id)],
             'password' => 'nullable|string|min:8|confirmed',
             'phone' => 'nullable|string',
-            'user_type' => 'required|in:customer,admin,manager',
+            'user_type' => 'required|in:customer,admin,manager,service_provider',
             'is_active' => 'boolean',
         ]);
 

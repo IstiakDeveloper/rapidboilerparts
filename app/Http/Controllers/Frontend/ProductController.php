@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\Brand;
+use App\Models\ProductService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -179,6 +180,23 @@ class ProductController extends Controller
         // Get price range
         $priceRange = Product::active()->selectRaw('MIN(price) as min_price, MAX(price) as max_price')->first();
 
+        // Get all active services (available for all products)
+        $availableServices = ProductService::active()
+            ->ordered()
+            ->get()
+            ->map(function ($service) {
+                return [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'description' => $service->description,
+                    'base_price' => (float) $service->price,
+                    'duration_minutes' => 60,
+                    'type' => $service->type,
+                    'is_optional' => (bool) $service->is_optional,
+                    'is_free' => (bool) $service->is_free,
+                ];
+            });
+
         return Inertia::render('Products/Index', [
             'products' => $products,
             'brands' => $brands,
@@ -201,6 +219,7 @@ class ProductController extends Controller
                 'order'
             ]),
             'totalProducts' => Product::active()->count(),
+            'availableServices' => $availableServices,
         ]);
     }
 

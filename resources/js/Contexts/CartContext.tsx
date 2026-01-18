@@ -4,7 +4,7 @@ import { router } from '@inertiajs/react';
 interface CartContextType {
     cartCount: number;
     setCartCount: (count: number) => void;
-    addToCart: (productId: number, quantity: number) => Promise<boolean>;
+    addToCart: (productId: number, quantity: number, selectedServices?: any[]) => Promise<boolean>;
     showToast: (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
     refreshCart: () => void;
 }
@@ -25,8 +25,20 @@ export const CartProvider: React.FC<{ children: ReactNode; initialCartCount: num
         }));
     }, []);
 
-    const addToCart = useCallback(async (productId: number, quantity: number = 1): Promise<boolean> => {
+    const addToCart = useCallback(async (productId: number, quantity: number = 1, selectedServices?: any[]): Promise<boolean> => {
         try {
+            const requestBody: any = {
+                product_id: productId,
+                quantity
+            };
+
+            // Add selected services if provided
+            if (selectedServices && selectedServices.length > 0) {
+                requestBody.selected_services = selectedServices;
+            }
+
+            console.log('=== Adding to Cart ===', requestBody);
+
             const response = await fetch('/api/cart/add', {
                 method: 'POST',
                 headers: {
@@ -35,7 +47,7 @@ export const CartProvider: React.FC<{ children: ReactNode; initialCartCount: num
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: JSON.stringify({ product_id: productId, quantity }),
+                body: JSON.stringify(requestBody),
             });
 
             const data = await response.json();

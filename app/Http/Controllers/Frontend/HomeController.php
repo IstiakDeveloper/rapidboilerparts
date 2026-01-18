@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Category;
 use App\Models\Brand;
+use App\Models\ProductService;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -139,6 +140,23 @@ class HomeController extends Controller
             'total_categories' => Category::active()->count(),
         ];
 
+        // Get all active services
+        $availableServices = ProductService::active()
+            ->ordered()
+            ->get()
+            ->map(function ($service) {
+                return [
+                    'id' => $service->id,
+                    'name' => $service->name,
+                    'description' => $service->description,
+                    'base_price' => (float) $service->price,
+                    'duration_minutes' => 60,
+                    'type' => $service->type,
+                    'is_optional' => (bool) $service->is_optional,
+                    'is_free' => (bool) $service->is_free,
+                ];
+            });
+
         return Inertia::render('Home', [
             'categories' => $categories, // Display এর জন্য top 6
             'allCategories' => $allCategories, // Search dropdown এর জন্য সব categories
@@ -146,6 +164,7 @@ class HomeController extends Controller
             'featuredProducts' => $featuredProducts,
             'latestProducts' => $latestProducts,
             'stats' => $stats,
+            'availableServices' => $availableServices,
         ]);
     }
 

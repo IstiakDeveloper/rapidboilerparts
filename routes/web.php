@@ -30,6 +30,7 @@ use App\Http\Controllers\Admin\{
     ContactInquiryController,
     SettingController,
     ProductServiceController,
+    ServiceTypeController,
     ServiceManagementController
 };
 
@@ -79,6 +80,10 @@ Route::prefix('cart')->name('cart.')->group(function () {
     Route::get('/count', [CartController::class, 'count'])->name('count');
 });
 
+// Service API Routes (for getting product services)
+use App\Http\Controllers\Api\ServiceController;
+Route::get('/api/services/product/{product}', [ServiceController::class, 'getProductServices'])->name('api.services.product');
+
 // Wishlist Routes
 Route::middleware('auth')->prefix('wishlist')->name('wishlist.')->group(function () {
     Route::get('/', [WishlistController::class, 'index'])->name('index');
@@ -89,17 +94,6 @@ Route::middleware('auth')->prefix('wishlist')->name('wishlist.')->group(function
     Route::post('/{wishlist}/move-to-cart', [WishlistController::class, 'moveToCart'])->name('moveToCart');
     Route::delete('/', [WishlistController::class, 'clear'])->name('clear');
 });
-
-// Checkout Routes
-Route::middleware('auth')->prefix('checkout')->name('checkout.')->group(function () {
-    Route::get('/', [CheckoutController::class, 'index'])->name('index');
-    Route::post('/apply-coupon', [CheckoutController::class, 'applyCoupon'])->name('applyCoupon');
-    Route::delete('/remove-coupon', [CheckoutController::class, 'removeCoupon'])->name('removeCoupon');
-    Route::post('/areas-by-city', [CheckoutController::class, 'getAreasByCity'])->name('areasByCity');
-    Route::post('/process', [CheckoutController::class, 'processCheckout'])->name('process');
-    Route::get('/payment/{order}', [CheckoutController::class, 'payment'])->name('payment');
-});
-
 // Order Routes
 Route::middleware('auth')->prefix('orders')->name('orders.')->group(function () {
     Route::get('/', [OrderController::class, 'index'])->name('index');
@@ -185,7 +179,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout.index');
         Route::post('/checkout/apply-coupon', [CheckoutController::class, 'applyCoupon'])->name('checkout.apply-coupon');
         Route::post('/checkout/remove-coupon', [CheckoutController::class, 'removeCoupon'])->name('checkout.remove-coupon');
-        Route::post('/checkout/process', [CheckoutController::class, 'processCheckout'])->name('checkout.process'); // ← এখানে 'processCheckout' হবে
+        Route::post('/checkout/areas-by-city', [CheckoutController::class, 'getAreasByCity'])->name('checkout.areas-by-city');
+        Route::post('/checkout/check-service-availability', [CheckoutController::class, 'checkServiceAvailability'])->name('checkout.check-service-availability');
+        Route::post('/checkout/process', [CheckoutController::class, 'processCheckout'])->name('checkout.process');
         Route::get('/checkout/payment/{order}', [CheckoutController::class, 'payment'])->name('checkout.payment');
     });
 
@@ -260,6 +256,14 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
     Route::delete('product-services/remove-from-product', [ProductServiceController::class, 'removeFromProduct'])->name('product-services.remove');
     Route::post('product-services/bulk-action', [ProductServiceController::class, 'bulkAction'])->name('product-services.bulk-action');
 
+    // Service Types API (for dynamic type management)
+    Route::prefix('api/service-types')->name('api.service-types.')->group(function () {
+        Route::get('/', [ServiceTypeController::class, 'index'])->name('index');
+        Route::post('/', [ServiceTypeController::class, 'store'])->name('store');
+        Route::put('/{serviceType}', [ServiceTypeController::class, 'update'])->name('update');
+        Route::delete('/{serviceType}', [ServiceTypeController::class, 'destroy'])->name('destroy');
+    });
+
     // Product Attributes Management
     Route::resource('product-attributes', ProductAttributeController::class);
     Route::post('product-attributes/bulk-action', [ProductAttributeController::class, 'bulkAction'])->name('product-attributes.bulk-action');
@@ -329,6 +333,15 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'admin'])->group(fun
         Route::post('/areas-by-city', [ServiceManagementController::class, 'getAreasByCity'])->name('areas-by-city');
         Route::get('/categories', [ServiceManagementController::class, 'getCategories'])->name('categories');
         Route::get('/cities', [ServiceManagementController::class, 'getCities'])->name('cities');
+
+        // Service Assignment
+        Route::get('/{serviceManagement}/services', [ServiceManagementController::class, 'manageServices'])->name('services.manage');
+        Route::put('/{serviceManagement}/services', [ServiceManagementController::class, 'updateServices'])->name('services.update');
+
+        // Schedule Management
+        Route::get('/{serviceManagement}/schedule', [ServiceManagementController::class, 'getSchedule'])->name('schedule.get');
+        Route::get('/{serviceManagement}/working-hours', [ServiceManagementController::class, 'getWorkingHours'])->name('working-hours.get');
+        Route::put('/{serviceManagement}/working-hours', [ServiceManagementController::class, 'updateWorkingHours'])->name('working-hours.update');
 
         // Quick Actions
         Route::post('/{serviceManagement}/toggle-status', [ServiceManagementController::class, 'toggleStatus'])->name('toggle-status');

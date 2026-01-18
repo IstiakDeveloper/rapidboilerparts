@@ -55,9 +55,24 @@ interface Order {
     shipping_amount: number;
     discount_amount: number;
     total_amount: number;
+    total_services_amount: number;
     billing_address: Address;
     shipping_address: Address;
     notes: string | null;
+    preferred_service_date: string | null;
+    service_time_slot: string | null;
+    service_instructions: string | null;
+    service_provider: {
+        id: number;
+        name: string;
+        business_name: string | null;
+        contact_number: string | null;
+        email: string | null;
+        city: string | null;
+        area: string | null;
+        rating: number;
+    } | null;
+    assigned_at: string | null;
     created_at: string;
     shipped_at: string | null;
     delivered_at: string | null;
@@ -291,6 +306,13 @@ const OrderShow: React.FC<OrderShowProps> = ({ order }) => {
                                     <span>{formatPrice(order.subtotal)}</span>
                                 </div>
 
+                                {order.total_services_amount > 0 && (
+                                    <div className="flex justify-between text-gray-600">
+                                        <span>Services:</span>
+                                        <span>{formatPrice(order.total_services_amount)}</span>
+                                    </div>
+                                )}
+
                                 {order.discount_amount > 0 && (
                                     <div className="flex justify-between text-green-600">
                                         <span>Discount:</span>
@@ -358,6 +380,93 @@ const OrderShow: React.FC<OrderShowProps> = ({ order }) => {
                                 )}
                             </div>
                         </div>
+
+                        {/* Service Provider Information */}
+                        {order.service_provider && (
+                            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200 p-6">
+                                <div className="flex items-center mb-4">
+                                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                        </svg>
+                                    </div>
+                                    <h2 className="text-lg font-bold text-gray-800">Service Provider</h2>
+                                </div>
+                                <div className="space-y-3 text-sm">
+                                    <div>
+                                        <p className="text-gray-600 text-xs font-semibold uppercase mb-1">Provider Name</p>
+                                        <p className="font-semibold text-gray-900">{order.service_provider.name}</p>
+                                        {order.service_provider.business_name && (
+                                            <p className="text-gray-600 text-xs mt-0.5">{order.service_provider.business_name}</p>
+                                        )}
+                                    </div>
+
+                                    {order.service_provider.contact_number && (
+                                        <div>
+                                            <p className="text-gray-600 text-xs font-semibold uppercase mb-1">Contact</p>
+                                            <p className="text-gray-800">{order.service_provider.contact_number}</p>
+                                        </div>
+                                    )}
+
+                                    {order.service_provider.email && (
+                                        <div>
+                                            <p className="text-gray-600 text-xs font-semibold uppercase mb-1">Email</p>
+                                            <p className="text-gray-800 break-all">{order.service_provider.email}</p>
+                                        </div>
+                                    )}
+
+                                    {(order.service_provider.city || order.service_provider.area) && (
+                                        <div>
+                                            <p className="text-gray-600 text-xs font-semibold uppercase mb-1">Location</p>
+                                            <p className="text-gray-800">
+                                                {[order.service_provider.area, order.service_provider.city].filter(Boolean).join(', ')}
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-4 pt-2 border-t border-blue-200">
+                                        <div>
+                                            <p className="text-gray-600 text-xs font-semibold uppercase">Rating</p>
+                                            <p className="text-lg font-bold text-yellow-600">⭐ {order.service_provider.rating.toFixed(1)}</p>
+                                        </div>
+                                        {order.assigned_at && (
+                                            <div>
+                                                <p className="text-gray-600 text-xs font-semibold uppercase">Assigned</p>
+                                                <p className="text-sm text-gray-800">{order.assigned_at}</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {(order.preferred_service_date || order.service_time_slot) && (
+                                        <div className="mt-3 pt-3 border-t border-blue-200">
+                                            <p className="text-gray-600 text-xs font-semibold uppercase mb-2">Service Schedule</p>
+                                            {order.preferred_service_date && (
+                                                <p className="text-gray-800 flex items-center gap-2">
+                                                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                                    </svg>
+                                                    {order.preferred_service_date}
+                                                </p>
+                                            )}
+                                            {order.service_time_slot && (
+                                                <p className="text-gray-800 flex items-center gap-2 mt-1">
+                                                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                    </svg>
+                                                    {order.service_time_slot}
+                                                </p>
+                                            )}
+                                            {order.service_instructions && (
+                                                <div className="mt-2">
+                                                    <p className="text-gray-600 text-xs font-semibold uppercase mb-1">Instructions</p>
+                                                    <p className="text-gray-700 text-xs bg-white/50 p-2 rounded">{order.service_instructions}</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Billing Address */}
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">

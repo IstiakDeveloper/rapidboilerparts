@@ -59,7 +59,10 @@ class OrderController extends Controller
             abort(403);
         }
 
-        $order->load(['items.product.brand', 'items.product.images']);
+        $order->load(['items.product.brand', 'items.product.images', 'serviceProvider.user', 'serviceProvider.city', 'serviceProvider.area']);
+
+        // Calculate total services amount from order items
+        $totalServicesAmount = $order->items->sum('services_total');
 
         return Inertia::render('Orders/Show', [
             'order' => [
@@ -74,14 +77,42 @@ class OrderController extends Controller
                 'shipping_amount' => (float) $order->shipping_amount,
                 'discount_amount' => (float) $order->discount_amount,
                 'total_amount' => (float) $order->total_amount,
+                'total_services_amount' => (float) $totalServicesAmount,
                 'billing_address' => $order->billing_address,
                 'shipping_address' => $order->shipping_address,
                 'notes' => $order->notes,
+                'preferred_service_date' => $order->preferred_service_date ? $order->preferred_service_date->format('M d, Y') : null,
+                'service_time_slot' => $order->service_time_slot,
+                'service_instructions' => $order->service_instructions,
+                'service_provider' => $order->serviceProvider ? [
+                    'id' => $order->serviceProvider->id,
+                    'name' => $order->serviceProvider->user->first_name . ' ' . $order->serviceProvider->user->last_name,
+                    'business_name' => $order->serviceProvider->business_name,
+                    'contact_number' => $order->serviceProvider->contact_number,
+                    'email' => $order->serviceProvider->email,
+                    'city' => $order->serviceProvider->city->name ?? null,
+                    'area' => $order->serviceProvider->area->name ?? null,
+                    'rating' => (float) ($order->serviceProvider->rating ?? 0),
+                ] : null,
+                'assigned_at' => $order->assigned_at ? $order->assigned_at->format('M d, Y H:i A') : null,
                 'created_at' => $order->created_at->format('M d, Y H:i A'),
                 'shipped_at' => $order->shipped_at ? $order->shipped_at->format('M d, Y H:i A') : null,
                 'delivered_at' => $order->delivered_at ? $order->delivered_at->format('M d, Y H:i A') : null,
                 'items' => $order->items->map(function ($item) {
                     $primaryImage = $item->product->images->where('is_primary', true)->first();
+
+                    // Format selected services to match frontend expectations
+                    $selectedServices = [];
+                    if (!empty($item->selected_services) && is_array($item->selected_services)) {
+                        foreach ($item->selected_services as $service) {
+                            $selectedServices[] = [
+                                'id' => $service['service_id'] ?? null,
+                                'name' => $service['service_name'] ?? 'Unknown Service',
+                                'price' => (float) ($service['estimated_cost'] ?? 0),
+                            ];
+                        }
+                    }
+
                     return [
                         'id' => $item->id,
                         'product_name' => $item->product_name,
@@ -89,7 +120,7 @@ class OrderController extends Controller
                         'quantity' => $item->quantity,
                         'unit_price' => (float) $item->unit_price,
                         'total_price' => (float) $item->total_price,
-                        'selected_services' => $item->selected_services,
+                        'selected_services' => $selectedServices,
                         'services_total' => (float) $item->services_total,
                         'product' => [
                             'id' => $item->product->id,

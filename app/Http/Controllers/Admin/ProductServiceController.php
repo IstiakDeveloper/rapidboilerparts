@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\{ProductService, Product};
+use App\Models\{ProductService, Product, ServiceType};
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
-use Str;
+use Illuminate\Support\Str;
 
 class ProductServiceController extends Controller
 {
@@ -42,7 +42,11 @@ class ProductServiceController extends Controller
 
     public function create(): Response
     {
-        return Inertia::render('Admin/ProductServices/Create');
+        $serviceTypes = ServiceType::active()->ordered()->get();
+
+        return Inertia::render('Admin/ProductServices/Create', [
+            'serviceTypes' => $serviceTypes,
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
@@ -51,7 +55,8 @@ class ProductServiceController extends Controller
             'name' => 'required|string|max:255',
             'slug' => 'nullable|string|max:255|unique:product_services',
             'description' => 'nullable|string',
-            'type' => 'required|in:setup,delivery,installation,maintenance,other',
+            'type' => 'nullable|string|max:50',
+            'service_type_id' => 'required|exists:service_types,id',
             'price' => 'required|numeric|min:0',
             'is_optional' => 'boolean',
             'is_free' => 'boolean',
@@ -80,8 +85,11 @@ class ProductServiceController extends Controller
 
     public function edit(ProductService $productService): Response
     {
+        $serviceTypes = ServiceType::active()->ordered()->get();
+
         return Inertia::render('Admin/ProductServices/Edit', [
             'service' => $productService,
+            'serviceTypes' => $serviceTypes,
         ]);
     }
 
@@ -91,7 +99,8 @@ class ProductServiceController extends Controller
             'name' => 'required|string|max:255',
             'slug' => ['nullable', 'string', 'max:255', Rule::unique('product_services')->ignore($productService->id)],
             'description' => 'nullable|string',
-            'type' => 'required|in:setup,delivery,installation,maintenance,other',
+            'type' => 'nullable|string|max:50',
+            'service_type_id' => 'required|exists:service_types,id',
             'price' => 'required|numeric|min:0',
             'is_optional' => 'boolean',
             'is_free' => 'boolean',

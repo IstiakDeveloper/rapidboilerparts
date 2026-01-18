@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\{BelongsTo, BelongsToMany};
 
 class ProductService extends Model
 {
@@ -15,6 +15,7 @@ class ProductService extends Model
         'slug',
         'description',
         'type',
+        'service_type_id',
         'price',
         'is_optional',
         'is_free',
@@ -33,10 +34,22 @@ class ProductService extends Model
     ];
 
     // Relationships
+    public function serviceType(): BelongsTo
+    {
+        return $this->belongsTo(ServiceType::class);
+    }
+
     public function products(): BelongsToMany
     {
         return $this->belongsToMany(Product::class, 'product_service_assignments')
             ->withPivot(['custom_price', 'is_mandatory', 'is_free', 'conditions'])
+            ->withTimestamps();
+    }
+
+    public function serviceProviders(): BelongsToMany
+    {
+        return $this->belongsToMany(ServiceProvider::class, 'product_service_service_provider')
+            ->withPivot(['custom_price', 'experience_level', 'is_active'])
             ->withTimestamps();
     }
 

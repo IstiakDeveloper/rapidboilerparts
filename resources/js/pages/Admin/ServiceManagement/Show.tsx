@@ -41,6 +41,18 @@ interface Order {
     created_at: string;
 }
 
+interface ProductService {
+    id: number;
+    name: string;
+    type: string;
+    price: string;
+    pivot: {
+        custom_price: string | null;
+        experience_level: string;
+        is_active: boolean;
+    };
+}
+
 interface ServiceProvider {
     id: number;
     user_id: number;
@@ -67,6 +79,7 @@ interface ServiceProvider {
     city: City;
     area: Area;
     orders?: Order[];
+    services?: ProductService[];
 }
 
 interface Props {
@@ -224,6 +237,54 @@ export default function Show({ serviceProvider }: Props) {
                     </div>
                 </div>
 
+                {/* Quick Actions */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Link
+                        href={`/admin/service-management/${serviceProvider.id}/services`}
+                        className="flex items-center gap-4 p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-blue-500 hover:shadow-md transition-all group"
+                    >
+                        <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-200 rounded-lg flex items-center justify-center transition-colors">
+                            <Package className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                Manage Services
+                            </h3>
+                            <p className="text-sm text-gray-600">Assign services & pricing</p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        href={`/admin/service-management/${serviceProvider.id}/working-hours`}
+                        className="flex items-center gap-4 p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-purple-500 hover:shadow-md transition-all group"
+                    >
+                        <div className="w-12 h-12 bg-purple-100 group-hover:bg-purple-200 rounded-lg flex items-center justify-center transition-colors">
+                            <Clock className="w-6 h-6 text-purple-600" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors">
+                                Working Hours
+                            </h3>
+                            <p className="text-sm text-gray-600">Set availability schedule</p>
+                        </div>
+                    </Link>
+
+                    <Link
+                        href={`/admin/service-management/${serviceProvider.id}/schedule`}
+                        className="flex items-center gap-4 p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-green-500 hover:shadow-md transition-all group"
+                    >
+                        <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center transition-colors">
+                            <Calendar className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 group-hover:text-green-600 transition-colors">
+                                View Schedule
+                            </h3>
+                            <p className="text-sm text-gray-600">Check bookings & calendar</p>
+                        </div>
+                    </Link>
+                </div>
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Main Information */}
                     <div className="lg:col-span-2 space-y-8">
@@ -304,6 +365,77 @@ export default function Show({ serviceProvider }: Props) {
                                 )}
                             </div>
                         </div>
+
+                        {/* Assigned Services */}
+                        {serviceProvider.services && serviceProvider.services.length > 0 && (
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                                <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                                    <h2 className="text-lg font-semibold text-gray-900">Assigned Services</h2>
+                                    <Link
+                                        href={`/admin/service-management/${serviceProvider.id}/edit`}
+                                        className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                    >
+                                        Edit Services
+                                    </Link>
+                                </div>
+                                <div className="p-6">
+                                    <div className="space-y-3">
+                                        {serviceProvider.services.map((service) => (
+                                            <div
+                                                key={service.id}
+                                                className="bg-gray-50 border border-gray-200 rounded-lg p-4"
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                                                            {service.pivot.is_active ? (
+                                                                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded">
+                                                                    Active
+                                                                </span>
+                                                            ) : (
+                                                                <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded">
+                                                                    Inactive
+                                                                </span>
+                                                            )}
+                                                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded capitalize">
+                                                                {service.pivot.experience_level}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-sm text-gray-600 space-y-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-medium">Service Type:</span>
+                                                                <span className="capitalize">{service.type}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-medium">Customer Price:</span>
+                                                                <span>£{parseFloat(service.price).toFixed(2)}</span>
+                                                            </div>
+                                                            {service.pivot.custom_price && (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-medium">Provider Payment:</span>
+                                                                    <span className="text-green-600 font-semibold">
+                                                                        £{parseFloat(service.pivot.custom_price).toFixed(2)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {service.pivot.custom_price && (
+                                                                <div className="flex items-center gap-2 text-xs">
+                                                                    <span className="font-medium">Company Profit:</span>
+                                                                    <span className="text-blue-600 font-semibold">
+                                                                        £{(parseFloat(service.price) - parseFloat(service.pivot.custom_price)).toFixed(2)}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Assigned Orders */}
                         {serviceProvider.orders && serviceProvider.orders.length > 0 && (

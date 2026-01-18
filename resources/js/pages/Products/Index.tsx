@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Search, Filter, X, ChevronDown, Star, Grid, List, SortAsc, ShoppingCart, Heart, Eye, Loader2 } from 'lucide-react';
 import AppLayout from '@/layouts/AppLayout';
+import ServiceSelectionModal from '@/components/ServiceSelectionModal';
 
 interface Product {
     id: number;
@@ -45,6 +46,17 @@ interface Category {
     products_count: number;
 }
 
+interface Service {
+    id: number;
+    name: string;
+    description: string | null;
+    base_price: number;
+    duration_minutes: number;
+    type: string;
+    is_optional: boolean;
+    is_free: boolean;
+}
+
 interface ProductsPageProps {
     products: {
         data: Product[];
@@ -75,6 +87,7 @@ interface ProductsPageProps {
         order?: string;
     };
     totalProducts: number;
+    availableServices: Service[];
 }
 
 const ProductsPage: React.FC<ProductsPageProps> = ({
@@ -83,13 +96,19 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
     categories,
     priceRange,
     filters,
-    totalProducts
+    totalProducts,
+    availableServices
 }) => {
-    const { csrf_token } = usePage<ProductsPageProps>().props;
+    // Get CSRF token from meta tag
+    const getCsrfToken = () => {
+        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    };
     const [showFilters, setShowFilters] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [addingToCart, setAddingToCart] = useState<number | null>(null);
     const [addingToWishlist, setAddingToWishlist] = useState<number | null>(null);
+    const [serviceModalOpen, setServiceModalOpen] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [localFilters, setLocalFilters] = useState({
         search: filters.search || '',
         brand: filters.brand || '',
@@ -118,18 +137,43 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
         ));
     };
 
-    const handleAddToCart = async (productId: number) => {
-        setAddingToCart(productId);
+    const handleAddToCart = (productId: number) => {
+        console.log('=== Products/Index: handleAddToCart called ===');
+        console.log('Product ID:', productId);
+
+        const product = products.data.find(p => p.id === productId);
+
+        console.log('Product found:', product ? 'Yes' : 'No');
+        if (product) {
+            console.log('Product details:', { id: product.id, name: product.name });
+            console.log('Opening service modal...');
+            setSelectedProduct(product);
+            setServiceModalOpen(true);
+        } else {
+            console.error('Product not found in products list');
+        }
+    };
+
+    const addToCartWithServices = async (services: any[]) => {
+        if (!selectedProduct) return;
+
+        setAddingToCart(selectedProduct.id);
+        setServiceModalOpen(false);
+
         try {
             const response = await fetch('/api/cart/add', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrf_token,
+                    'X-CSRF-TOKEN': getCsrfToken(),
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                body: JSON.stringify({ product_id: productId, quantity: 1 }),
+                body: JSON.stringify({
+                    product_id: selectedProduct.id,
+                    quantity: 1,
+                    selected_services: services
+                }),
             });
 
             const data = await response.json();
@@ -139,7 +183,12 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                     detail: { cartCount: data.cartCount }
                 }));
                 window.dispatchEvent(new CustomEvent('showToast', {
-                    detail: { type: 'success', message: data.message }
+                    detail: {
+                        type: 'success',
+                        message: services.length > 0
+                            ? `Added to cart with ${services.length} service(s)`
+                            : data.message
+                    }
                 }));
             } else {
                 window.dispatchEvent(new CustomEvent('showToast', {
@@ -153,6 +202,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
             }));
         } finally {
             setAddingToCart(null);
+            setSelectedProduct(null);
         }
     };
 
@@ -162,7 +212,7 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
             const response = await fetch(`/wishlist/add/${productId}`, {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': csrf_token,
+                    'X-CSRF-TOKEN': getCsrfToken(),
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
@@ -861,6 +911,18 @@ const ProductsPage: React.FC<ProductsPageProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Service Selection Modal */}
+            <ServiceSelectionModal
+                isOpen={serviceModalOpen}
+                onClose={() => {
+                    setServiceModalOpen(false);
+                    setSelectedProduct(null);
+                }}
+                productId={selectedProduct?.id || null}
+                productName={selectedProduct?.name || ''}
+                onConfirm={addToCartWithServices}
+            />
         </AppLayout>
     );
 };
